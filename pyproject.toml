@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openenv-claims_env"
+version = "0.1.0"
+description = "Insurance Claims Adjudication environment for OpenEnv — agents process claims by reading policies, verifying coverage, detecting fraud, and issuing decisions"
+requires-python = ">=3.10"
+dependencies = [
+    "openenv-core[core]>=0.2.2",
+    "openai>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
+]
+
+[project.scripts]
+server = "claims_env.server.app:main"
+
+[tool.setuptools]
+include-package-data = true
+packages = ["claims_env", "claims_env.server", "claims_env.server.tasks"]
+package-dir = { "claims_env" = ".", "claims_env.server" = "server", "claims_env.server.tasks" = "server/tasks" }
