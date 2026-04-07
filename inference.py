@@ -154,15 +154,13 @@ def action_from_dict(d: Dict[str, Any]) -> ClaimsAction:
 
 def run_task(client: OpenAI, env, task_id: str) -> Dict[str, Any]:
     """Run a single task and return the result."""
-    print(f"\n{'='*60}")
-    print(f"TASK: {task_id}")
-    print(f"{'='*60}")
+    print(f"[START] task_id={task_id}")
 
     result = env.reset(task_id=task_id)
     observation = result.observation
     history: List[str] = []
 
-    print(f"Task: {observation.task_id} ({observation.task_difficulty})")
+    print(f"[START] difficulty={observation.task_difficulty} max_steps={observation.max_steps}")
 
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -177,7 +175,7 @@ def run_task(client: OpenAI, env, task_id: str) -> Dict[str, Any]:
 
     for step in range(1, MAX_STEPS + 1):
         if result.done:
-            print(f"  Episode done at step {step - 1}")
+            print(f"[STEP] step={step - 1} status=done_early")
             break
 
         try:
@@ -190,7 +188,7 @@ def run_task(client: OpenAI, env, task_id: str) -> Dict[str, Any]:
             )
             response_text = completion.choices[0].message.content or ""
         except Exception as exc:
-            print(f"  Model error at step {step}: {exc}")
+            print(f"[STEP] step={step} status=model_error error={exc}")
             # Fallback: issue a deny decision
             response_text = json.dumps({
                 "action_type": "issue_decision",
@@ -201,7 +199,7 @@ def run_task(client: OpenAI, env, task_id: str) -> Dict[str, Any]:
 
         action_dict = parse_action(response_text)
         if action_dict is None:
-            print(f"  Step {step}: Failed to parse action, skipping")
+            print(f"[STEP] step={step} status=parse_failed")
             messages.append({"role": "assistant", "content": response_text})
             messages.append({
                 "role": "user",
@@ -212,7 +210,7 @@ def run_task(client: OpenAI, env, task_id: str) -> Dict[str, Any]:
         try:
             action = action_from_dict(action_dict)
         except Exception as exc:
-            print(f"  Step {step}: Invalid action: {exc}")
+            print(f"[STEP] step={step} status=invalid_action error={exc}")
             messages.append({"role": "assistant", "content": response_text})
             messages.append({
                 "role": "user",
@@ -227,9 +225,8 @@ def run_task(client: OpenAI, env, task_id: str) -> Dict[str, Any]:
 
         reward = result.reward or 0.0
         print(
-            f"  Step {step}: {action.action_type} | "
-            f"reward={reward:+.3f} | "
-            f"score={observation.current_score:.3f} | "
+            f"[STEP] step={step} action={action.action_type} "
+            f"reward={reward:+.3f} score={observation.current_score:.3f} "
             f"done={result.done}"
         )
 
@@ -247,7 +244,7 @@ def run_task(client: OpenAI, env, task_id: str) -> Dict[str, Any]:
 
     # If not done, force a decision
     if not result.done:
-        print("  Forcing decision (max steps reached)")
+        print(f"[STEP] step={steps_used + 1} action=issue_decision status=forced_max_steps")
         fallback_action = ClaimsAction(
             action_type="issue_decision",
             decision="deny",
@@ -258,26 +255,24 @@ def run_task(client: OpenAI, env, task_id: str) -> Dict[str, Any]:
         final_score = result.observation.current_score
         steps_used += 1
 
-    print(f"\n  FINAL SCORE: {final_score:.3f}")
-    print(f"  Steps used: {steps_used}")
-    if result.observation.score_breakdown:
-        for cat, s in sorted(result.observation.score_breakdown.items()):
-            print(f"    {cat}: {s:.3f}")
+    score_breakdown = result.observation.score_breakdown or {}
+    print(
+        f"[END] task_id={task_id} score={final_score:.3f} "
+        f"steps={steps_used} breakdown={json.dumps(score_breakdown)}"
+    )
 
     return {
         "task_id": task_id,
         "score": final_score,
         "steps_used": steps_used,
-        "score_breakdown": result.observation.score_breakdown or {},
+        "score_breakdown": score_breakdown,
     }
 
 
 def main() -> None:
     """Run baseline inference on all tasks."""
-    print("Insurance Claims Adjudication — Baseline Inference")
-    print(f"Model: {MODEL_NAME}")
-    print(f"API: {API_BASE_URL}")
-    print(f"Max steps per task: {MAX_STEPS}")
+    print(f"[START] Insurance Claims Adjudication — Baseline Inference")
+    print(f"[START] model={MODEL_NAME} api={API_BASE_URL} max_steps={MAX_STEPS}")
 
     llm_client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
@@ -296,16 +291,11 @@ def main() -> None:
     elapsed = time.time() - start_time
 
     # Summary
-    print(f"\n{'='*60}")
-    print("SUMMARY")
-    print(f"{'='*60}")
     total_score = 0.0
     for r in results:
-        print(f"  {r['task_id']}: {r['score']:.3f} ({r['steps_used']} steps)")
         total_score += r["score"]
     avg_score = total_score / len(results) if results else 0
-    print(f"\n  Average score: {avg_score:.3f}")
-    print(f"  Total time: {elapsed:.1f}s")
+    print(f"[END] average_score={avg_score:.3f} total_time={elapsed:.1f}s tasks={len(results)}")
 
     # Save results
     output = {

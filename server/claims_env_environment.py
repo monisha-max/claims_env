@@ -49,6 +49,7 @@ class ClaimsEnvironment(Environment):
         self._fraud_flags_found: List[str] = []
         self._max_steps: int = 20
         self._decision_issued: bool = False
+        self._request_info_rewarded: bool = False
 
     def reset(
         self,
@@ -67,6 +68,7 @@ class ClaimsEnvironment(Environment):
         self._fraud_flags_found = []
         self._max_steps = self._task.get("max_steps", 20)
         self._decision_issued = False
+        self._request_info_rewarded = False
 
         self._state = ClaimsState(
             episode_id=episode_id or str(uuid4()),
@@ -114,7 +116,7 @@ class ClaimsEnvironment(Environment):
             )
 
         # Check step limit
-        if self._state.step_count >= self._max_steps:
+        if self._state.step_count > self._max_steps:
             return self._make_observation(
                 f"Maximum steps ({self._max_steps}) reached without issuing a decision.",
                 success=False,
@@ -273,23 +275,27 @@ class ClaimsEnvironment(Environment):
         self._scores["payout"] = score
 
         result_text = (
-            f"Payout calculation:\n"
-            f"  Your calculation: ${agent_payout:,.2f}\n"
-            f"  Claimed amount: ${claimed:,.2f}\n"
-            f"  Deductible applied: ${deductible:,.2f}\n"
-            f"  Coverage limit: ${limit:,.2f}\n"
-            f"  Coverage rate: {rate*100:.0f}%\n"
-            f"\nCorrect payout: ${correct_payout:,.2f}\n"
-            f"Calculation details: {gt['calculation']}\n"
-            f"Accuracy: {payout_accuracy*100:.1f}%"
+            f"Payout calculation recorded.\n"
+            f"  Calculated payout: ${agent_payout:,.2f}\n"
+            f"  Claimed: ${claimed:,.2f} | Deductible: ${deductible:,.2f} "
+            f"| Limit: ${limit:,.2f} | Rate: {rate*100:.0f}%"
         )
 
         return self._make_observation(result_text, success=True, done=False, reward=score)
 
     def _handle_flag_fraud(self, action: ClaimsAction) -> ClaimsObservation:
         gt_flags = self._ground_truth.get("fraud_flags", [])
-        indicator = action.fraud_indicator or ""
-        evidence = action.fraud_evidence or ""
+        indicator = (action.fraud_indicator or "").strip()
+        evidence = (action.fraud_evidence or "").strip()
+
+        # Reject blank flag_fraud calls — must provide substantive indicator text
+        if not indicator and not evidence:
+            return self._make_observation(
+                "Fraud flag rejected: fraud_indicator and fraud_evidence cannot both be empty.",
+                success=False,
+                done=False,
+                reward=-0.05,
+            )
 
         # Check if this flag matches any ground truth fraud indicator
         matched = False
@@ -339,7 +345,7 @@ class ClaimsEnvironment(Environment):
 
     def _handle_request_info(self, action: ClaimsAction) -> ClaimsObservation:
         """Handle information request — provides contextual response."""
-        question = action.info_question or ""
+        question = (action.info_question or "").strip()
 
         # Provide relevant information based on the question
         result_text = (
@@ -348,8 +354,13 @@ class ClaimsEnvironment(Environment):
             "All available information has been included in the initial observation."
         )
 
-        # Small reward for being thorough, but don't over-reward
-        score = 0.01 if question else 0.0
+        # Reward once per episode for a non-empty question; zero thereafter
+        if question and not self._request_info_rewarded:
+            score = 0.01
+            self._request_info_rewarded = True
+        else:
+            score = 0.0
+
         return self._make_observation(result_text, success=True, done=False, reward=score)
 
     def _handle_issue_decision(self, action: ClaimsAction) -> ClaimsObservation:
@@ -462,13 +473,17 @@ class ClaimsEnvironment(Environment):
         self, indicator: str, evidence: str, gt_flag: Dict[str, Any]
     ) -> bool:
         """Check if agent's fraud flag matches a ground truth indicator."""
-        ind_lower = indicator.lower()
-        ev_lower = evidence.lower()
+        ind_lower = indicator.lower().strip()
+        ev_lower = evidence.lower().strip()
         gt_ind = gt_flag["indicator"].lower()
         gt_desc = gt_flag["description"].lower()
 
-        # Direct indicator match
-        if gt_ind in ind_lower or ind_lower in gt_ind:
+        # Reject empty indicators — empty string is a substring of everything
+        if not ind_lower and not ev_lower:
+            return False
+
+        # Direct indicator match (require non-empty ind_lower to avoid trivial matches)
+        if ind_lower and (gt_ind in ind_lower or ind_lower in gt_ind):
             return True
 
         # Check key terms from description
