@@ -186,14 +186,14 @@ class TestScoring:
         assert "eligibility" in obs.score_breakdown
         assert "decision" in obs.score_breakdown
 
-    def test_all_scores_between_0_and_1(self, env):
+    def test_all_scores_strictly_between_0_and_1(self, env):
         for task_id in ALL_FIXED_TASKS:
             env.reset(task_id=task_id)
             env.step(ClaimsAction(action_type="check_eligibility"))
             obs = env.step(ClaimsAction(
                 action_type="issue_decision", decision="approve",
                 decision_amount=0, decision_reasoning="test"))
-            assert 0.0 <= obs.current_score <= 1.0, f"{task_id}: score {obs.current_score}"
+            assert 0.0 < obs.current_score < 1.0, f"{task_id}: score {obs.current_score}"
 
     def test_cumulative_score_increases(self, easy_env):
         scores = []
@@ -292,6 +292,35 @@ class TestEdgeCases:
         assert env.state.current_score == 0.0
         assert env.state.fraud_flags == []
         assert env.state.eligibility_checked is False
+
+    def test_score_never_exactly_zero(self, env):
+        """Validator requires scores strictly > 0."""
+        env.reset(task_id="easy_auto_collision")
+        obs = env.step(ClaimsAction(action_type="check_eligibility"))
+        assert obs.current_score > 0.0
+
+    def test_score_never_exactly_one(self, env):
+        """Validator requires scores strictly < 1."""
+        env.reset(task_id="easy_auto_collision")
+        env.step(ClaimsAction(action_type="check_eligibility"))
+        env.step(ClaimsAction(action_type="check_coverage"))
+        env.step(ClaimsAction(action_type="check_exclusion"))
+        env.step(ClaimsAction(action_type="calculate_payout",
+                              claimed_amount=8500, deductible=500,
+                              coverage_limit=25000, coverage_rate=0.80))
+        obs = env.step(ClaimsAction(
+            action_type="issue_decision", decision="approve",
+            decision_amount=6400, decision_reasoning="test"))
+        assert obs.current_score < 1.0
+
+    def test_score_clamped_on_no_actions(self, env):
+        """Even with minimal actions, score should be > 0."""
+        env.reset(task_id="hard_property_fraud")
+        obs = env.step(ClaimsAction(
+            action_type="issue_decision", decision="deny",
+            decision_amount=0, decision_reasoning="deny"))
+        assert obs.current_score > 0.0
+        assert obs.current_score < 1.0
 
     def test_decision_amount_zero_on_denial(self, hard_env):
         obs = hard_env.step(ClaimsAction(

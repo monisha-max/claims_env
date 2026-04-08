@@ -431,6 +431,7 @@ class ClaimsEnvironment(Environment):
         self._scores["decision"] = score
 
         total_score = sum(self._scores.values())
+        total_score = min(0.999, max(0.001, total_score))
         self._state.current_score = total_score
 
         result_text = (
@@ -461,6 +462,8 @@ class ClaimsEnvironment(Environment):
         self, result: str, success: bool, done: bool, reward: float
     ) -> ClaimsObservation:
         total_score = sum(self._scores.values())
+        # Clamp to strictly between 0 and 1 (validator rejects exact 0.0 or 1.0)
+        total_score = min(0.999, max(0.001, total_score))
         self._state.current_score = total_score
 
         return ClaimsObservation(
