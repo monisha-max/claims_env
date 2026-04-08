@@ -703,10 +703,1056 @@ TOTAL CLAIMED: $101,900.00
     }
 
 
+def _task_travel() -> Dict[str, Any]:
+    """Task 4 (Easy): Trip cancellation due to sudden medical emergency.
+
+    Clear policy, covered reason, straightforward 100% reimbursement of
+    non-refundable trip costs. No exclusions apply.
+    """
+    return {
+        "task_id": "easy_travel_cancellation",
+        "difficulty": "easy",
+        "max_steps": 15,
+        "policy_document": """
+TRAVELSAFE INSURANCE POLICY — Policy #TRV-2024-30092
+Policyholder: Priya Sharma
+Policy Period: February 1, 2024 – February 29, 2024 (single-trip)
+Premium Status: PAID IN FULL
+
+SECTION 1: TRIP CANCELLATION
+Covers 100% of non-refundable, prepaid trip expenses if the trip is
+cancelled due to a covered reason before departure.
+Covered reasons include:
+- Sudden illness or injury of the insured requiring physician-ordered
+  travel restriction (must occur after policy purchase)
+- Death of insured or immediate family member
+- Natural disaster rendering destination uninhabitable
+- Jury duty or subpoena issued after policy purchase
+- Coverage Limit: $10,000 per trip
+
+SECTION 2: TRIP INTERRUPTION
+Covers up to 150% of original trip cost if trip must be cut short due
+to a covered reason.
+- Coverage Limit: $15,000
+
+SECTION 3: EMERGENCY MEDICAL
+Covers emergency medical expenses incurred during travel.
+- Coverage Limit: $50,000
+- Deductible: $0
+
+SECTION 4: BAGGAGE LOSS AND DELAY
+- Loss: up to $2,500 total; $500 per item cap; $250 cap on electronics
+- Delay (over 12 hours): $200/day up to $1,000
+
+SECTION 5: EXCLUSIONS
+The following are NOT covered:
+a) Cancellation due to change of mind or disinclination to travel
+b) Pre-existing medical conditions unless the Pre-existing Condition
+   Waiver was purchased at the time of policy inception
+c) Government-issued travel warnings or advisories (Fear of Travel)
+d) Financial default of a travel supplier unless Travel Supplier
+   Default coverage is added
+e) Participation in extreme sports not listed as covered activities
+f) Intentional self-inflicted injury
+
+SECTION 6: CONDITIONS
+- Claims must be filed within 60 days of cancellation
+- Physician's written statement required for medical cancellations
+- Documentation of non-refundability required from all suppliers
+- Original receipts required for all claimed expenses
+""".strip(),
+        "claim_submission": """
+CLAIM SUBMISSION — Claim #TRV-CLM-2024-00481
+Claimant: Priya Sharma
+Policy: #TRV-2024-30092
+Trip Destination: Cancun, Mexico (February 20–27, 2024)
+Date of Cancellation: February 18, 2024
+Date Filed: February 22, 2024
+
+REASON FOR CANCELLATION:
+On February 17, 2024, I fell during a morning jog and fractured my left
+ankle (fibula fracture). I visited the emergency room at Boston Medical
+Center the same day. My orthopedist, Dr. Kevin Park, has ordered strict
+non-weight-bearing rest for a minimum of 6 weeks and has explicitly
+stated in writing that I am medically unfit to travel.
+
+NON-REFUNDABLE PREPAID EXPENSES:
+1. Round-trip airfare (American Airlines): $1,840.00 (non-refundable fare)
+2. Hotel (Excellence Playa Mujeres, 7 nights): $1,960.00 (non-refundable)
+3. All-inclusive resort package (Viator): $680.00 (no cancellation refund)
+
+TOTAL CLAIMED: $4,480.00
+""".strip(),
+        "supporting_evidence": [
+            "Emergency Room Report — Boston Medical Center, Feb 17, 2024: "
+            "Diagnosis: closed fibula fracture, left ankle. Treatment: splint, "
+            "crutches, referral to orthopedics.",
+            "Physician Letter — Dr. Kevin Park, MD (Orthopedics), Feb 18, 2024: "
+            "'Patient Priya Sharma is medically unable to travel due to acute "
+            "fibula fracture. Non-weight-bearing for 6 weeks minimum. Travel is "
+            "strictly contraindicated.'",
+            "American Airlines cancellation notice: Booking PRSHARM20FEB. "
+            "Non-refundable fare. Travel credit issued but cash refund denied. "
+            "Ticket value: $1,840.00.",
+            "Excellence Playa Mujeres confirmation: Reservation #EXC-78821. "
+            "Cancellation Policy: non-refundable after Feb 1, 2024. "
+            "Amount forfeited: $1,960.00.",
+            "Viator confirmation: Order #VTR-994421. No cancellation refund per "
+            "supplier terms. Amount forfeited: $680.00.",
+        ],
+        "ground_truth": {
+            "eligibility": {
+                "is_eligible": True,
+                "reason": "Policy is active, paid in full, and covers the travel dates. "
+                "Claim filed within 60 days of cancellation.",
+            },
+            "coverage": {
+                "section": "trip_cancellation",
+                "is_covered": True,
+                "reason": "Sudden injury after policy purchase requiring physician-ordered "
+                "travel restriction is a covered reason under Section 1.",
+                "item_coverage": {
+                    "airfare": {"covered": True, "amount": 1840.00},
+                    "hotel": {"covered": True, "amount": 1960.00},
+                    "tour_package": {"covered": True, "amount": 680.00},
+                },
+            },
+            "exclusions": {
+                "any_apply": False,
+                "applicable_exclusions": [],
+            },
+            "payout": {
+                "claimed_amount": 4480.00,
+                "deductible": 0.00,
+                "coverage_limit": 10000.00,
+                "coverage_rate": 1.00,
+                "correct_payout": 4480.00,
+                "calculation": "100% of non-refundable trip costs: 1840 + 1960 + 680 = 4480.00",
+            },
+            "fraud_flags": [],
+            "correct_decision": "approve",
+            "correct_decision_amount": 4480.00,
+        },
+        "scoring_weights": {
+            "eligibility": 0.10,
+            "coverage": 0.25,
+            "exclusions": 0.10,
+            "payout": 0.30,
+            "fraud": 0.05,
+            "decision": 0.20,
+        },
+    }
+
+
+def _task_pet() -> Dict[str, Any]:
+    """Task 5 (Medium): Pet emergency surgery with deductible and reimbursement rate.
+
+    Policy covers accident/illness. Agent must verify no pre-existing condition,
+    apply annual deductible, compute 80% reimbursement, and approve.
+    """
+    return {
+        "task_id": "medium_pet_surgery",
+        "difficulty": "medium",
+        "max_steps": 18,
+        "policy_document": """
+PAWPROTECT PET INSURANCE POLICY — Policy #PET-2024-17703
+Policyholder: James Okafor
+Pet: Biscuit (Labrador Retriever, Male, DOB: April 12, 2021)
+Policy Period: January 1, 2024 – December 31, 2024
+Premium Status: PAID IN FULL
+
+SECTION 1: ACCIDENT AND ILLNESS COVERAGE
+Covers veterinary costs for unexpected accidents and illnesses including:
+- Emergency examinations and consultations
+- Diagnostic imaging (X-rays, ultrasound, MRI, CT scans)
+- Laboratory tests and bloodwork
+- Surgery and hospitalization
+- Specialist referrals
+- Prescribed medications (30-day supply per prescription)
+- Annual Deductible: $200 (per policy year, not per condition)
+- Reimbursement Rate: 80% of eligible expenses after deductible
+- Annual Benefit Limit: $10,000
+
+SECTION 2: WELLNESS COVERAGE (ADD-ON — NOT PURCHASED)
+Routine and preventive care. Not included in this policy.
+
+SECTION 3: EXCLUSIONS
+The following are NOT covered:
+a) Pre-existing conditions: Any illness, injury, or symptom documented
+   in veterinary records before the policy effective date or during the
+   14-day illness waiting period (January 1–14, 2024).
+   Accidents are covered from policy effective date (no waiting period).
+b) Elective or cosmetic procedures (tail docking, ear cropping)
+c) Dental cleaning and prophylaxis (dental disease and injury: covered)
+d) Routine/preventive care: vaccinations, flea/tick prevention, wellness
+   exams (unless Wellness Add-on purchased)
+e) Breeding, pregnancy, whelping costs
+f) Experimental or investigational treatments
+g) Grooming services
+
+SECTION 4: CONDITIONS
+- Claims must be submitted within 180 days of treatment
+- All veterinary invoices and medical records must be submitted
+- A copy of complete veterinary history may be requested to assess
+  pre-existing conditions
+- Reimbursement is made directly to the policyholder
+""".strip(),
+        "claim_submission": """
+CLAIM SUBMISSION — Claim #PET-CLM-2024-09214
+Claimant: James Okafor
+Policy: #PET-2024-17703
+Pet: Biscuit (Labrador Retriever)
+Date of Incident: March 8, 2024
+Date Filed: March 20, 2024
+
+INCIDENT DESCRIPTION:
+On March 8, 2024, Biscuit began vomiting repeatedly and appeared lethargic.
+I brought him to City Animal Emergency Hospital, where X-rays revealed a
+sock lodged in his small intestine (foreign body obstruction). Emergency
+surgery was performed to remove the obstruction. Biscuit recovered well
+and was discharged on March 10, 2024.
+
+ITEMIZED VETERINARY INVOICE:
+1. Emergency exam and triage: $350.00
+2. Abdominal X-rays (series of 3): $420.00
+3. Abdominal ultrasound: $280.00
+4. Pre-surgical bloodwork: $185.00
+5. Foreign body removal surgery: $3,400.00
+6. Anesthesia: $480.00
+7. Hospitalization (2 nights, ICU monitoring): $920.00
+8. IV fluids and supportive care: $310.00
+9. Post-operative antibiotics (14-day course): $95.00
+10. Pain medication (7-day supply): $80.00
+11. Discharge exam and recheck instructions: $80.00
+
+TOTAL INVOICE: $6,600.00
+""".strip(),
+        "supporting_evidence": [
+            "City Animal Emergency Hospital — Veterinary Records, March 8-10, 2024: "
+            "Patient: Biscuit, Labrador Retriever, 2 yrs 10 months. Presenting "
+            "complaint: repeated vomiting, lethargy. Diagnosis: foreign body "
+            "obstruction (textile object — sock) in proximal small intestine. "
+            "Procedure: exploratory laparotomy and foreign body removal. Outcome: "
+            "uncomplicated recovery. Discharged March 10, 2024.",
+            "Prior Veterinary Records — Biscuit (from previous vet, 2022-2023): "
+            "Routine wellness exams, vaccinations. No GI conditions documented. "
+            "No prior surgeries. No mention of digestive issues or foreign body "
+            "incidents.",
+            "Policy deductible status: $0 of $200 annual deductible has been used "
+            "prior to this claim (first claim of policy year 2024).",
+        ],
+        "ground_truth": {
+            "eligibility": {
+                "is_eligible": True,
+                "reason": "Policy active and paid. Claim filed within 180 days. "
+                "Biscuit is the insured pet.",
+            },
+            "coverage": {
+                "section": "accident_illness",
+                "is_covered": True,
+                "reason": "Foreign body ingestion is an accident. All treatment items "
+                "(exam, imaging, surgery, hospitalization, medications) are covered "
+                "under Section 1.",
+                "item_coverage": {
+                    "emergency_exam": {"covered": True, "amount": 350.00},
+                    "xrays": {"covered": True, "amount": 420.00},
+                    "ultrasound": {"covered": True, "amount": 280.00},
+                    "bloodwork": {"covered": True, "amount": 185.00},
+                    "surgery": {"covered": True, "amount": 3400.00},
+                    "anesthesia": {"covered": True, "amount": 480.00},
+                    "hospitalization": {"covered": True, "amount": 920.00},
+                    "iv_fluids": {"covered": True, "amount": 310.00},
+                    "antibiotics": {"covered": True, "amount": 95.00},
+                    "pain_meds": {"covered": True, "amount": 80.00},
+                    "recheck_exam": {"covered": True, "amount": 80.00},
+                },
+            },
+            "exclusions": {
+                "any_apply": False,
+                "applicable_exclusions": [],
+            },
+            "payout": {
+                "claimed_amount": 6600.00,
+                "deductible": 200.00,
+                "coverage_limit": 10000.00,
+                "coverage_rate": 0.80,
+                "correct_payout": 5120.00,  # (6600 - 200) * 0.80 = 6400 * 0.80 = 5120
+                "calculation": "(6600 - 200) × 0.80 = 6400 × 0.80 = 5120.00",
+            },
+            "fraud_flags": [],
+            "correct_decision": "approve",
+            "correct_decision_amount": 5120.00,
+        },
+        "scoring_weights": {
+            "eligibility": 0.10,
+            "coverage": 0.25,
+            "exclusions": 0.15,
+            "payout": 0.30,
+            "fraud": 0.05,
+            "decision": 0.15,
+        },
+    }
+
+
+def _task_life() -> Dict[str, Any]:
+    """Task 6 (Medium): Life insurance death benefit claim.
+
+    Agent must verify policy is active, confirm cause of death is covered,
+    confirm contestability period has passed, and approve full death benefit.
+    """
+    return {
+        "task_id": "medium_life_benefit",
+        "difficulty": "medium",
+        "max_steps": 18,
+        "policy_document": """
+HORIZON TERM LIFE INSURANCE POLICY — Policy #LIFE-2021-44782
+Insured: Marcus Williams (DOB: July 14, 1978)
+Beneficiary: Angela Williams (Spouse)
+Death Benefit: $500,000
+Policy Period: March 1, 2021 – February 28, 2031 (10-year term)
+Monthly Premium: $185.00 (auto-pay, bank account on file)
+Premium Status: CURRENT (last payment: April 1, 2024)
+
+SECTION 1: DEATH BENEFIT
+Upon the death of the Insured during the policy term, the Company will
+pay the Death Benefit of $500,000 to the named Beneficiary, subject to
+the terms and conditions of this policy.
+
+SECTION 2: CONTESTABILITY PERIOD
+During the first two (2) years of this policy (March 1, 2021 –
+February 28, 2023), the Company reserves the right to contest a claim
+and void this policy if the application contained a material
+misrepresentation. After the contestability period, the policy is
+incontestable except for non-payment of premiums.
+
+Suicide Clause: Death by suicide within the first two (2) years is
+excluded. After the two-year period, suicide is a covered cause of death.
+
+SECTION 3: EXCLUSIONS
+The following are NOT covered at any time:
+a) Death resulting directly from participation in the commission of a
+   felony
+b) Death resulting from war, declared or undeclared, or armed conflict
+   while on active military duty
+c) Non-payment of premiums (policy lapses after 31-day grace period)
+
+SECTION 4: BENEFICIARY PROVISIONS
+- The named beneficiary may be changed by the policyholder at any time
+  prior to death with written notice to the Company
+- If the beneficiary predeceases the insured and no contingent
+  beneficiary is named, proceeds are paid to the insured's estate
+- Lump sum payment; no structured settlement without written election
+
+SECTION 5: CLAIM CONDITIONS
+- Claim must be filed within one (1) year of the date of death
+- Required documentation:
+  (a) Certified copy of death certificate
+  (b) Completed Claimant's Statement form
+  (c) Proof of beneficiary identity (government-issued ID)
+  (d) Proof of relationship (marriage certificate for spouse beneficiary)
+- Company may request additional documentation including medical records
+  if death occurs within the contestability period
+""".strip(),
+        "claim_submission": """
+CLAIM SUBMISSION — Claim #LIFE-CLM-2024-00772
+Claimant: Angela Williams (Beneficiary/Spouse)
+Policy: #LIFE-2021-44782
+Insured: Marcus Williams
+Date of Death: March 28, 2024
+Date Filed: April 10, 2024
+
+CIRCUMSTANCES OF DEATH:
+Marcus Williams suffered a sudden cardiac arrest at his home on the
+evening of March 28, 2024. Emergency services were called but were
+unable to resuscitate him. He was pronounced dead at 9:47 PM at
+St. Vincent's Medical Center.
+
+DOCUMENTS SUBMITTED:
+1. Certified death certificate — State of Connecticut, issued April 2, 2024
+2. Completed Claimant's Statement (form CL-1 signed by Angela Williams)
+3. Copy of marriage certificate (Williams/Rodriguez, married June 4, 2005)
+4. Angela Williams driver's license (CT DL #A12345678)
+5. Autopsy report (requested by Angela Williams from medical examiner)
+
+CLAIMED AMOUNT: $500,000 (full death benefit)
+""".strip(),
+        "supporting_evidence": [
+            "Certified Death Certificate — State of Connecticut: Decedent: Marcus "
+            "Williams, DOB July 14, 1978. Date of Death: March 28, 2024. "
+            "Cause of Death: Acute myocardial infarction (cardiac arrest). "
+            "Manner of Death: Natural. Signed by Medical Examiner Dr. Susan Park.",
+            "Autopsy Report — Office of the Chief Medical Examiner, CT: Examination "
+            "reveals severe coronary artery disease with acute plaque rupture of the "
+            "left anterior descending artery. No evidence of trauma or external cause. "
+            "Manner of death: Natural.",
+            "Premium Payment History: Policy #LIFE-2021-44782. Premiums paid "
+            "continuously from March 2021 through April 2024. No lapses. Last "
+            "payment: April 1, 2024 ($185.00 via auto-pay).",
+            "Marriage Certificate: Commonwealth of Connecticut. Marcus D. Williams "
+            "and Angela M. Rodriguez married June 4, 2005. Certificate #2005-CT-44821.",
+            "Policy contestability period: Expired February 28, 2023. Death occurred "
+            "March 28, 2024 — over 13 months after end of contestability period.",
+        ],
+        "ground_truth": {
+            "eligibility": {
+                "is_eligible": True,
+                "reason": "Policy is active with current premiums. Insured died within "
+                "policy term. Claim filed within 1 year of death (13 days after death). "
+                "Angela Williams is the named beneficiary.",
+            },
+            "coverage": {
+                "section": "death_benefit",
+                "is_covered": True,
+                "reason": "Death from natural cause (acute myocardial infarction) is "
+                "covered. Contestability period expired Feb 28, 2023 — death occurred "
+                "13+ months after that. No exclusions apply.",
+            },
+            "exclusions": {
+                "any_apply": False,
+                "applicable_exclusions": [],
+            },
+            "payout": {
+                "claimed_amount": 500000.00,
+                "deductible": 0.00,
+                "coverage_limit": 500000.00,
+                "coverage_rate": 1.00,
+                "correct_payout": 500000.00,
+                "calculation": "Full death benefit: $500,000 lump sum to named beneficiary.",
+            },
+            "fraud_flags": [],
+            "correct_decision": "approve",
+            "correct_decision_amount": 500000.00,
+        },
+        "scoring_weights": {
+            "eligibility": 0.15,
+            "coverage": 0.20,
+            "exclusions": 0.20,
+            "payout": 0.20,
+            "fraud": 0.05,
+            "decision": 0.20,
+        },
+    }
+
+
+def _task_liability() -> Dict[str, Any]:
+    """Task 7 (Medium): Third-party personal injury liability claim.
+
+    A guest is injured on the policyholder's property. Agent must verify
+    liability coverage applies, confirm no exclusions, compute total payout
+    within policy limits, and approve documented economic damages.
+    """
+    return {
+        "task_id": "medium_liability_injury",
+        "difficulty": "medium",
+        "max_steps": 20,
+        "policy_document": """
+HOMESHIELD PERSONAL LIABILITY INSURANCE — Policy #LIA-2024-28810
+Policyholder: Thomas Brady
+Property: 44 Elm Street, Hartford, CT
+Policy Period: January 1, 2024 – December 31, 2024
+Premium Status: PAID IN FULL
+
+SECTION 1: PERSONAL LIABILITY COVERAGE
+Pays damages the policyholder is legally obligated to pay due to bodily
+injury or property damage caused by an occurrence on the insured premises.
+- Coverage Limit: $300,000 per occurrence
+- Defense costs: covered in addition to the liability limit
+- Deductible: $0 (no deductible on liability claims)
+
+SECTION 2: MEDICAL PAYMENTS TO OTHERS
+Pays reasonable medical expenses for bodily injury to a third party on
+the insured premises, regardless of legal liability (no-fault basis).
+- Coverage Limit: $5,000 per person per occurrence
+- Deductible: $0
+
+SECTION 3: COVERED DAMAGES UNDER PERSONAL LIABILITY
+When liability is established, the following damages are covered:
+a) Medical expenses (hospital, surgical, ambulance, rehabilitation)
+b) Lost wages resulting directly from the injury (with employer
+   verification)
+c) Physical therapy and ongoing rehabilitation
+d) General damages (pain and suffering) as part of a settled or
+   adjudicated claim
+All covered damages are subject to the $300,000 per-occurrence limit.
+
+SECTION 4: EXCLUSIONS
+NOT covered under this policy:
+a) Intentional or criminal acts by the policyholder or household members
+b) Bodily injury to the policyholder, resident family members, or
+   regular household employees
+c) Business activities conducted on the premises (home office, daycare,
+   retail)
+d) Contractual liability assumed by agreement
+e) Motorized vehicles (covered under auto policy)
+f) Workers' compensation claims by household employees
+
+SECTION 5: CONDITIONS
+- Policyholder must notify the insurer promptly of any occurrence
+- Policyholder must not admit liability or make any payment without
+  prior written consent of the insurer
+- Policyholder must cooperate with investigation and legal proceedings
+- Claimant must provide medical records and bills to support all damages
+- Lost wages require a signed statement from the employer
+""".strip(),
+        "claim_submission": """
+THIRD-PARTY CLAIM — Claim #LIA-CLM-2024-03317
+Claimant: Patricia Novak (third party)
+Insured: Thomas Brady (policyholder)
+Policy: #LIA-2024-28810
+Date of Incident: January 14, 2024
+Date Filed (by insured): January 17, 2024
+
+INCIDENT DESCRIPTION:
+On January 14, 2024, at approximately 5:30 PM, Patricia Novak arrived
+at 44 Elm Street as a dinner guest of Thomas Brady. Upon approaching the
+front door, she slipped on an icy section of the walkway, fell, and
+sustained a fracture of her right wrist. Photographs taken at the scene
+confirm the walkway was iced over with no ice-melt salt or sand applied.
+Thomas Brady has acknowledged that he had not treated the walkway that day.
+
+CLAIMED DAMAGES:
+1. Emergency room visit: $2,800.00
+2. Orthopedic consultation and follow-up (3 visits): $1,650.00
+3. Wrist fracture surgery (open reduction, internal fixation): $12,400.00
+4. Surgical facility and anesthesia fees: $3,800.00
+5. Physical therapy (10 sessions): $2,200.00
+6. Lost wages (8 weeks, unable to perform job duties as court reporter):
+   $6,240.00 ($780/week × 8 weeks)
+7. Pain and suffering: $22,000.00
+
+TOTAL CLAIMED: $51,090.00
+""".strip(),
+        "supporting_evidence": [
+            "Emergency Room Report — Hartford Hospital, Jan 14, 2024: Patient "
+            "Patricia Novak, DOB March 3, 1972. Presenting complaint: fall on ice. "
+            "Diagnosis: displaced distal radius fracture, right wrist. Treatment: "
+            "splinting, referral to orthopedics for surgical evaluation.",
+            "Orthopedic Surgical Report — Dr. Daniel Kim, MD: Open reduction and "
+            "internal fixation (ORIF) performed Jan 19, 2024. Hardware placed to "
+            "stabilize fracture. Estimated 8-week recovery before return to work.",
+            "Physical Therapy Records: 10 sessions (Feb 5 – Mar 8, 2024). Goal: "
+            "restore wrist range of motion and grip strength post-ORIF. $220/session.",
+            "Employer Verification Letter — Hartford Superior Court: Patricia Novak "
+            "is employed as a certified court reporter earning $780/week. Unable to "
+            "perform duties from Jan 14 to Mar 8, 2024 (8 weeks). Total lost wages: "
+            "$6,240.00.",
+            "Photographs (6 images) — Taken by Thomas Brady, Jan 14, 2024: Show "
+            "icy front walkway with no salt or sand. No visible attempts to treat ice.",
+            "Statement of Thomas Brady: 'I had not treated the front walkway on "
+            "January 14. I was aware it was cold and slippery. I should have "
+            "salted it before guests arrived. I accept responsibility.'",
+            "Medical bills summary: ER $2,800 + Ortho visits $1,650 + Surgery "
+            "$12,400 + Facility/anesthesia $3,800 + PT $2,200 = $22,850 total "
+            "medical expenses.",
+        ],
+        "ground_truth": {
+            "eligibility": {
+                "is_eligible": True,
+                "reason": "Policy is active and paid. Incident on insured premises "
+                "within policy period. Reported within reasonable time (3 days).",
+            },
+            "coverage": {
+                "section": "personal_liability",
+                "is_covered": True,
+                "reason": "Third-party bodily injury on insured premises caused by "
+                "policyholder negligence (failure to treat icy walkway) is covered "
+                "under Section 1. Medical payments (Section 2) also apply up to "
+                "$5,000 on a no-fault basis.",
+                "item_coverage": {
+                    "medical_expenses": {
+                        "covered": True,
+                        "amount": 22850.00,
+                        "reason": "All medical expenses (ER, surgery, PT) are covered "
+                        "under Section 3a. Total $22,850.",
+                    },
+                    "lost_wages": {
+                        "covered": True,
+                        "amount": 6240.00,
+                        "reason": "Lost wages with employer verification covered "
+                        "under Section 3b.",
+                    },
+                    "pain_and_suffering": {
+                        "covered": True,
+                        "amount": 22000.00,
+                        "reason": "General damages covered under Section 3d as part "
+                        "of settled claim.",
+                    },
+                },
+            },
+            "exclusions": {
+                "any_apply": False,
+                "applicable_exclusions": [],
+            },
+            "payout": {
+                "claimed_amount": 51090.00,
+                "deductible": 0.00,
+                "coverage_limit": 300000.00,
+                "coverage_rate": 1.00,
+                "correct_payout": 51090.00,
+                "calculation": (
+                    "Medical: 22850 + Lost wages: 6240 + Pain & suffering: 22000 "
+                    "= 51090. All within $300,000 per-occurrence limit. No deductible."
+                ),
+            },
+            "fraud_flags": [],
+            "correct_decision": "approve",
+            "correct_decision_amount": 51090.00,
+        },
+        "scoring_weights": {
+            "eligibility": 0.10,
+            "coverage": 0.25,
+            "exclusions": 0.15,
+            "payout": 0.25,
+            "fraud": 0.05,
+            "decision": 0.20,
+        },
+    }
+
+
+def _task_flood() -> Dict[str, Any]:
+    """Task 8 (Hard): Flood damage on a policy that excludes flood.
+
+    Policyholder has standard homeowner policy only (no flood endorsement).
+    Damage was caused by storm drainage backup — which is classified as
+    flood, not a covered internal plumbing failure. Agent must distinguish
+    covered water damage (burst pipe) from excluded flood water.
+    """
+    return {
+        "task_id": "hard_flood_exclusion",
+        "difficulty": "hard",
+        "max_steps": 25,
+        "policy_document": """
+GUARDIAN HOME INSURANCE POLICY — Policy #HOM-2024-55021
+Policyholder: Linda Marsh
+Property: 18 Riverside Drive, Baton Rouge, LA
+Policy Period: January 1, 2024 – December 31, 2024
+Premium Status: CURRENT
+Flood Insurance: NOT PURCHASED (no flood endorsement on file)
+
+SECTION 1: DWELLING COVERAGE — COVERED PERILS
+The following perils are covered when they cause sudden and accidental damage:
+- Fire and smoke
+- Lightning
+- Windstorm and hail
+- Explosion
+- Vandalism and malicious mischief
+- Theft
+- Weight of ice, snow, or sleet
+- Falling objects
+- Sudden and accidental discharge or overflow of water or steam
+  from within a plumbing, heating, air conditioning, or automatic
+  fire protective sprinkler system, or from a household appliance
+  (PLUMBING SYSTEM COVERAGE)
+- Coverage Limit: $280,000
+- Deductible: $1,500
+
+SECTION 2: PERSONAL PROPERTY COVERAGE
+Coverage for personal belongings damaged by a covered peril.
+- Coverage Limit: $80,000
+- Deductible: $1,000
+
+SECTION 3: ADDITIONAL LIVING EXPENSES
+Temporary housing and meals if dwelling is uninhabitable due to covered
+peril.
+- Coverage Limit: $40,000
+
+SECTION 4: EXCLUSIONS — EXPRESSLY EXCLUDED PERILS
+The following are NOT covered under any section of this policy:
+a) FLOOD: Surface water, waves, tidal water, overflow of a body of
+   water, storm drain backup or overflow, sewer backup (unless sewer
+   backup endorsement purchased), storm surge. Water that enters the
+   home through any opening caused by flood is not covered even if
+   wind or rain contributed to the opening. A separate flood insurance
+   policy through NFIP or a private flood insurer is required.
+b) EARTHQUAKE and earth movement
+c) Mold, fungus, wet rot resulting from flood or long-term moisture
+d) Gradual water intrusion through foundation cracks, windows, or doors
+   due to exterior water pressure
+e) Sewer or drain backup (no endorsement purchased)
+f) Power failure (damage caused by power outage off-premises)
+
+SECTION 5: PLUMBING SYSTEM DEFINED
+For purposes of Section 1, a "plumbing system" includes pipes, faucets,
+valves, water heater, and fixtures that are part of the interior water
+supply or drainage network. It does NOT include:
+- Sump pumps (a sump pump failure caused by external flood water
+  entering the sump pit is classified as flood, not plumbing failure)
+- Outdoor drainage systems or municipal storm drains
+- Gutters and downspouts
+
+SECTION 6: CONDITIONS
+- Claims must be reported within 14 days of the loss
+- Policyholder must mitigate further damage
+- A sworn proof of loss must be submitted within 60 days
+""".strip(),
+        "claim_submission": """
+CLAIM SUBMISSION — Claim #HOM-CLM-2024-07741
+Claimant: Linda Marsh
+Policy: #HOM-2024-55021
+Date of Loss: August 19, 2024
+Date Filed: August 23, 2024
+
+INCIDENT DESCRIPTION:
+On August 19, 2024, Tropical Storm Calvin brought extremely heavy
+rainfall to the Baton Rouge area (approximately 8 inches of rain in
+18 hours). During the storm, my basement flooded with approximately
+2.5 feet of water. My sump pump was running continuously but could not
+keep up with the water volume. By morning, the basement was completely
+flooded.
+
+I believe the cause of the flood was my sump pump failing to handle the
+volume, which is a plumbing system failure covered under Section 1 of
+my policy.
+
+CLAIMED DAMAGES:
+Basement water damage:
+1. Finished basement drywall (full replacement): $14,200
+2. Basement flooring (tile, fully submerged): $8,600
+3. HVAC system (furnace and air handler submerged): $11,400
+4. Water heater (submerged): $1,800
+5. Electrical panel damage (water intrusion): $4,200
+6. Personal property (furniture, electronics, appliances): $18,500
+7. Mold remediation (already visible within 3 days): $6,800
+
+TOTAL CLAIMED: $65,500.00
+""".strip(),
+        "supporting_evidence": [
+            "National Weather Service Report — August 19, 2024, Baton Rouge, LA: "
+            "Tropical Storm Calvin produced 7.8 inches of rainfall over 18 hours. "
+            "Widespread flooding reported across East Baton Rouge Parish. "
+            "Multiple streets and neighborhoods reported under water. Flash flood "
+            "warnings in effect from 6 AM to 10 PM.",
+            "East Baton Rouge Parish Emergency Management: Declared local state "
+            "of emergency Aug 19, 2024. Approximately 1,200 homes reported flooding "
+            "in the Riverside Drive area due to storm drainage overflow.",
+            "Plumber Inspection Report — Ace Plumbing, Aug 21, 2024: "
+            "'Inspected sump pump and pit at 18 Riverside Drive. Sump pump is "
+            "mechanically functional — motor and float switch are intact and "
+            "operating normally. The pump was overwhelmed by volume. Water in "
+            "the sump pit was sourced from exterior storm drainage backing into "
+            "the foundation drain tile system, not from any interior plumbing "
+            "failure. No burst pipes found anywhere in the home. Water entered "
+            "the basement from the exterior drainage and window wells.'",
+            "Neighbor statements (3): Confirm that multiple homes on Riverside "
+            "Drive experienced similar basement flooding during the storm. 'The "
+            "whole street flooded — it was clearly the storm drains overflowing.'",
+            "Photographs (12 images): Show basement water line at 2.5 feet, "
+            "damage to drywall, flooring, and equipment. Water line consistent "
+            "with exterior flood entry through window wells and foundation drain "
+            "tile, not interior pipe burst.",
+            "Insurance policy endorsement records: Standard homeowner policy "
+            "only. No flood endorsement. No sewer backup endorsement. "
+            "Policyholder was offered flood insurance endorsement at renewal "
+            "in January 2024 and declined.",
+        ],
+        "ground_truth": {
+            "eligibility": {
+                "is_eligible": True,
+                "reason": "Policy is active and premiums current. Claim filed within "
+                "14 days (4 days after loss).",
+            },
+            "coverage": {
+                "section": "exclusion_flood",
+                "is_covered": False,
+                "reason": "Water damage was caused by external storm drainage backup "
+                "and surface flooding from Tropical Storm Calvin — this is flood under "
+                "Section 4a. Plumber confirmed no burst pipes; sump pump was "
+                "mechanically functional but overwhelmed by external flood water. "
+                "Section 5 explicitly states that sump pump failure caused by external "
+                "flood water is classified as flood, not plumbing failure.",
+            },
+            "exclusions": {
+                "any_apply": True,
+                "applicable_exclusions": [
+                    {
+                        "item": "all_damage",
+                        "exclusion": "Section 4a: Flood exclusion. Storm drainage overflow, "
+                        "storm surge, and surface water entry are expressly excluded. "
+                        "No flood endorsement was purchased.",
+                        "amount_excluded": 65500.00,
+                    },
+                    {
+                        "item": "mold",
+                        "exclusion": "Section 4c: Mold resulting from flood is excluded.",
+                        "amount_excluded": 6800.00,
+                    },
+                ],
+            },
+            "payout": {
+                "claimed_amount": 65500.00,
+                "deductible": 1500.00,
+                "coverage_limit": 280000.00,
+                "coverage_rate": 0.00,
+                "correct_payout": 0.00,
+                "calculation": (
+                    "Flood exclusion (Section 4a) applies to all claimed damage. "
+                    "Sump pump overwhelmed by external storm water ≠ plumbing system "
+                    "failure (Section 5). No covered peril triggered. Payout: $0."
+                ),
+            },
+            "fraud_flags": [
+                {
+                    "indicator": "misclassification_attempt",
+                    "description": "Policyholder characterizes sump pump overwhelm as "
+                    "'plumbing failure' to invoke coverage. Plumber's report and "
+                    "NWS data confirm external flood origin.",
+                    "severity": "medium",
+                },
+                {
+                    "indicator": "declined_flood_coverage",
+                    "description": "Records show policyholder declined flood insurance "
+                    "endorsement at January 2024 renewal.",
+                    "severity": "low",
+                },
+            ],
+            "correct_decision": "deny",
+            "correct_decision_amount": 0.00,
+            "decision_reasoning": (
+                "Claim denied under Section 4a (Flood Exclusion). All damage was "
+                "caused by storm drainage overflow and surface water intrusion during "
+                "Tropical Storm Calvin — a flood event. The sump pump was not a "
+                "covered plumbing failure; it was overwhelmed by external flood water "
+                "(confirmed by licensed plumber). No flood or sewer backup endorsement "
+                "was purchased. Policyholder should file with NFIP flood insurer if "
+                "a separate flood policy was obtained."
+            ),
+        },
+        "scoring_weights": {
+            "eligibility": 0.05,
+            "coverage": 0.20,
+            "exclusions": 0.25,
+            "payout": 0.15,
+            "fraud": 0.15,
+            "decision": 0.20,
+        },
+    }
+
+
+def _task_disability() -> Dict[str, Any]:
+    """Task 9 (Hard): Long-term disability claim with elimination period,
+    own-occupation definition, and pre-existing condition question.
+
+    Agent must calculate the 90-day elimination period, correctly apply
+    the own-occupation definition (first 24 months), determine that the
+    pre-existing condition exclusion has expired, and approve the claim.
+    """
+    return {
+        "task_id": "hard_disability_claim",
+        "difficulty": "hard",
+        "max_steps": 25,
+        "policy_document": """
+STEADFAST LONG-TERM DISABILITY INSURANCE — Policy #DIS-2022-19034
+Insured: Dr. Elena Vasquez
+Occupation: Orthopedic Surgeon
+Policy Effective Date: June 1, 2022
+Monthly Benefit: $6,500
+Benefit Period: To age 65
+Premium Status: CURRENT (monthly auto-pay)
+
+SECTION 1: DEFINITION OF TOTAL DISABILITY
+The definition of Total Disability changes over the benefit period:
+
+OWN OCCUPATION PERIOD (First 24 months of benefit payments):
+The Insured is unable to perform the material and substantial duties of
+their OWN OCCUPATION — the specific occupation in which the Insured was
+engaged immediately before the disability began — even if able to work
+in another occupation.
+
+ANY OCCUPATION PERIOD (After 24 months of benefit payments):
+The Insured is unable to perform the duties of ANY occupation for which
+they are reasonably suited by education, training, or experience.
+
+SECTION 2: PARTIAL DISABILITY BENEFIT
+If the Insured returns to work but earns between 40% and 80% of their
+pre-disability income, a partial (proportional) disability benefit is
+payable:
+Partial Benefit = Monthly Benefit × (Income Loss % / Pre-disability Income)
+If earning LESS than 40% of pre-disability income, the Insured is
+considered Totally Disabled and the full Monthly Benefit is payable.
+
+SECTION 3: ELIMINATION PERIOD
+Benefits begin after a 90-day elimination period from the onset of
+disability. No benefits are payable during the elimination period.
+The elimination period must be served only once per disability.
+
+SECTION 4: PRE-EXISTING CONDITION EXCLUSION
+A condition is Pre-Existing if, within the 12-month period immediately
+before the Policy Effective Date (i.e., June 1, 2021 – May 31, 2022),
+the Insured:
+(a) received medical treatment, consultation, or care for the condition;
+  OR
+(b) was prescribed medication for the condition; OR
+(c) had symptoms that a reasonable person would seek treatment for.
+
+A Pre-Existing condition is excluded from coverage for the first 12
+months of the policy (June 1, 2022 – May 31, 2023). After May 31, 2023,
+no pre-existing condition exclusion applies.
+
+SECTION 5: EXCLUSIONS (AT ALL TIMES)
+NOT covered under any circumstance:
+a) Disability resulting from intentional self-inflicted injury
+b) Disability arising during active military service
+c) Disability resulting from committing or attempting a felony
+d) Disability due to substance abuse unless enrolled in a supervised
+   rehabilitation program
+
+SECTION 6: BENEFIT PAYMENT CONDITIONS
+- Written claim must be filed within 30 days of end of elimination period
+- Attending Physician Statement (APS) required from treating specialist
+- Proof of pre-disability income (last 12 months of tax returns or
+  employer verification)
+- Ongoing proof of continued disability required every 90 days
+- Pre-disability monthly income for benefit calculation:
+  Average monthly income over last 24 months = $16,250/month
+""".strip(),
+        "claim_submission": """
+CLAIM SUBMISSION — Claim #DIS-CLM-2024-00561
+Claimant: Dr. Elena Vasquez
+Policy: #DIS-2022-19034
+Occupation at Time of Disability: Orthopedic Surgeon, Hartford Orthopedic Group
+Date Disability Began: September 15, 2023
+Claim Filed: January 10, 2024
+
+DESCRIPTION OF DISABILITY:
+In August 2023, I began experiencing worsening pain, numbness, and loss of
+dexterity in both hands. On September 15, 2023, I was diagnosed by
+Dr. Robert Singh (hand specialist) with severe bilateral carpal tunnel
+syndrome and trigger finger affecting the right index and middle fingers.
+Dr. Singh has stated in writing that I am unable to safely perform surgical
+procedures due to the risk of loss of motor control during surgery.
+
+Since September 15, 2023, I have not performed any surgical procedures.
+I have continued to see patients in a limited non-surgical capacity
+(consultations and follow-up visits only) and have been earning
+approximately $4,000/month in this reduced role, compared to my
+pre-disability income of $16,250/month.
+
+REQUESTED BENEFIT: $6,500/month beginning December 14, 2023
+(90 days after disability onset of September 15, 2023)
+
+DOCUMENTS ATTACHED:
+1. Attending Physician Statement from Dr. Robert Singh
+2. EMG/nerve conduction study results (Sept 18, 2023)
+3. Prior 24-month income documentation
+4. Employer verification of reduced duties and earnings
+""".strip(),
+        "supporting_evidence": [
+            "Attending Physician Statement — Dr. Robert Singh, MD (Hand Surgery "
+            "Specialist), December 20, 2023: 'Dr. Vasquez has severe bilateral "
+            "carpal tunnel syndrome (confirmed by EMG, September 18, 2023) with "
+            "superimposed trigger finger, right hand. She is unable to perform "
+            "surgical procedures safely. Surgery requires sustained fine motor "
+            "control and grip force that she can no longer provide. She is "
+            "permanently restricted from operative work. She can perform "
+            "non-surgical medical consultations.'",
+            "EMG / Nerve Conduction Study — Hartford Neurology, September 18, 2023: "
+            "Bilateral median nerve compression consistent with severe carpal tunnel "
+            "syndrome. Right hand shows additional findings consistent with trigger "
+            "finger at the flexor digitorum superficialis.",
+            "Complete Veterinary and Medical History — Dr. Vasquez: "
+            "August 14, 2022: Annual physical exam — note reads 'mild bilateral "
+            "wrist discomfort reported by patient, attributed to surgical workload. "
+            "No treatment recommended. No diagnosis made. Patient declined referral.' "
+            "No other wrist/hand entries until September 2023.",
+            "Income Documentation (24 months, Jan 2022 – Dec 2023): W-2 and K-1 "
+            "from Hartford Orthopedic Group. Average monthly income: $16,250. "
+            "Post-disability reduced income (Oct–Dec 2023): $4,000/month.",
+            "Hartford Orthopedic Group — Employer Statement: 'Dr. Vasquez has been "
+            "relieved of all surgical responsibilities effective September 15, 2023. "
+            "She currently performs consultation and non-operative follow-up only. "
+            "Her compensation has been reduced accordingly to $4,000/month.'",
+            "Policy timeline: Policy effective June 1, 2022. Pre-existing exclusion "
+            "window: June 1, 2021 – May 31, 2022. Exclusion expires: May 31, 2023. "
+            "Disability onset: September 15, 2023 — over 3 months after exclusion "
+            "expiry. Elimination period: Sept 15 + 90 days = December 14, 2023.",
+        ],
+        "ground_truth": {
+            "eligibility": {
+                "is_eligible": True,
+                "reason": "Policy active with current premiums. Claim filed January 10, "
+                "2024 — within 30 days of end of elimination period (Dec 14, 2023). "
+                "Dr. Vasquez is the insured.",
+            },
+            "coverage": {
+                "section": "own_occupation_disability",
+                "is_covered": True,
+                "reason": "Own occupation period applies (disability month 3 at claim "
+                "filing, well within first 24 months). Surgery is a material and "
+                "substantial duty of an orthopedic surgeon. Dr. Vasquez is unable "
+                "to perform surgery due to bilateral carpal tunnel and trigger finger "
+                "(confirmed by EMG). The fact that she can perform consultations is "
+                "irrelevant under the own-occupation definition.",
+            },
+            "exclusions": {
+                "any_apply": False,
+                "applicable_exclusions": [],
+                "analysis": (
+                    "Pre-existing condition exclusion: The Aug 14, 2022 medical note "
+                    "falls AFTER the policy effective date (June 1, 2022) so it is "
+                    "not within the lookback window (June 1, 2021 – May 31, 2022). "
+                    "Furthermore, even if it were in the window, no treatment or "
+                    "diagnosis was made — only a patient-reported symptom that was "
+                    "not treated. The 12-month exclusion period (June 2022 – May 2023) "
+                    "has also expired; disability onset was September 2023."
+                ),
+            },
+            "payout": {
+                "pre_disability_income": 16250.00,
+                "current_income": 4000.00,
+                "income_as_pct_of_predisability": 24.6,
+                "disability_classification": "Total (earning < 40% of pre-disability income)",
+                "monthly_benefit": 6500.00,
+                "elimination_period_end": "December 14, 2023",
+                "correct_payout": 6500.00,
+                "calculation": (
+                    "Dr. Vasquez earns $4,000 / $16,250 = 24.6% of pre-disability income. "
+                    "Under Section 2, earning < 40% = Totally Disabled → full monthly "
+                    "benefit of $6,500 is payable. Elimination period ended Dec 14, 2023. "
+                    "Benefits commence Dec 14, 2023."
+                ),
+            },
+            "fraud_flags": [
+                {
+                    "indicator": "continued_partial_work",
+                    "description": "Dr. Vasquez continues working in a reduced capacity "
+                    "($4,000/month). This is not fraud — it is expected and addressed "
+                    "by Section 2 (partial disability). Earning < 40% qualifies for "
+                    "full benefit.",
+                    "severity": "low",
+                },
+            ],
+            "correct_decision": "approve",
+            "correct_decision_amount": 6500.00,
+            "decision_reasoning": (
+                "Approve $6,500/month beginning December 14, 2023. Own-occupation "
+                "definition applies (within first 24 months). Surgery is a material "
+                "duty of an orthopedic surgeon. Pre-existing exclusion does not apply "
+                "(lookback window pre-dates any relevant note; exclusion period expired "
+                "May 2023; disability onset September 2023). Earning < 40% of "
+                "pre-disability income = total disability under Section 2."
+            ),
+        },
+        "scoring_weights": {
+            "eligibility": 0.10,
+            "coverage": 0.20,
+            "exclusions": 0.20,
+            "payout": 0.20,
+            "fraud": 0.10,
+            "decision": 0.20,
+        },
+    }
+
+
 TASKS = {
     "easy_auto_collision": _task_easy,
     "medium_medical_exclusions": _task_medium,
     "hard_property_fraud": _task_hard,
+    "easy_travel_cancellation": _task_travel,
+    "medium_pet_surgery": _task_pet,
+    "medium_life_benefit": _task_life,
+    "medium_liability_injury": _task_liability,
+    "hard_flood_exclusion": _task_flood,
+    "hard_disability_claim": _task_disability,
 }
 
 

@@ -22,7 +22,12 @@ import os
 import re
 import textwrap
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 from openai import OpenAI
 
@@ -37,8 +42,14 @@ MAX_TOKENS = 1024
 
 TASK_IDS = [
     "easy_auto_collision",
+    "easy_travel_cancellation",
     "medium_medical_exclusions",
+    "medium_pet_surgery",
+    "medium_life_benefit",
+    "medium_liability_injury",
     "hard_property_fraud",
+    "hard_flood_exclusion",
+    "hard_disability_claim",
 ]
 
 SYSTEM_PROMPT = textwrap.dedent("""\
@@ -157,7 +168,7 @@ def run_task(client: OpenAI, env, task_id: str) -> Dict[str, Any]:
     print(f"[START] task_id={task_id}")
 
     result = env.reset(task_id=task_id)
-    observation = result.observation
+    observation = result
     history: List[str] = []
 
     print(f"[START] difficulty={observation.task_difficulty} max_steps={observation.max_steps}")
@@ -219,7 +230,7 @@ def run_task(client: OpenAI, env, task_id: str) -> Dict[str, Any]:
             continue
 
         result = env.step(action)
-        observation = result.observation
+        observation = result
         steps_used = step
         history.append(action.action_type)
 
@@ -252,10 +263,10 @@ def run_task(client: OpenAI, env, task_id: str) -> Dict[str, Any]:
             decision_reasoning="Max steps reached, defaulting to deny",
         )
         result = env.step(fallback_action)
-        final_score = result.observation.current_score
+        final_score = result.current_score
         steps_used += 1
 
-    score_breakdown = result.observation.score_breakdown or {}
+    score_breakdown = result.score_breakdown or {}
     print(
         f"[END] task_id={task_id} score={final_score:.3f} "
         f"steps={steps_used} breakdown={json.dumps(score_breakdown)}"
