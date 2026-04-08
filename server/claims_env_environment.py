@@ -100,7 +100,7 @@ class ClaimsEnvironment(Environment):
             task_id=task_id,
             task_difficulty=self._task["difficulty"],
             actions_taken=[],
-            current_score=0.0,
+            current_score=0.001,
             eligibility_checked=False,
             coverage_checked=False,
             payout_calculated=False,
@@ -129,6 +129,15 @@ class ClaimsEnvironment(Environment):
         self._state.step_count += 1
         self._actions_taken.append(action.action_type)
         self._state.actions_taken = self._actions_taken.copy()
+
+        # Defensive guard for stateless HTTP callers: never crash on step-before-reset.
+        if self._task is None or self._ground_truth is None:
+            return self._make_observation(
+                "Environment not initialized. Call reset(...) before step(...).",
+                success=False,
+                done=True,
+                reward=0.001,
+            )
 
         # Check if episode already ended
         if self._decision_issued:
@@ -460,6 +469,8 @@ class ClaimsEnvironment(Environment):
     @staticmethod
     def _clamp_score(value: float) -> float:
         """Clamp to strictly between 0 and 1 (validator rejects exact 0.0 or 1.0)."""
+        if not math.isfinite(value):
+            return 0.001
         return min(0.999, max(0.001, value))
 
     def _make_observation(

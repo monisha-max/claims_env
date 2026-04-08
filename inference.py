@@ -22,6 +22,7 @@ import os
 import re
 import textwrap
 import time
+import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -94,6 +95,13 @@ WORKFLOW:
 
 RESPOND WITH ONLY A SINGLE JSON ACTION. No explanation text.
 """).strip()
+
+
+def clamp_score(value: float) -> float:
+    """Clamp scores to strict open interval (0, 1) for validator compatibility."""
+    if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+        return 0.001
+    return min(0.999, max(0.001, float(value)))
 
 
 def build_user_prompt(
@@ -184,7 +192,7 @@ def run_task(client: OpenAI, env, task_id: str) -> Dict[str, Any]:
         },
     ]
 
-    final_score = 0.0
+    final_score = 0.001
     steps_used = 0
 
     for step in range(1, MAX_STEPS + 1):
@@ -232,10 +240,15 @@ def run_task(client: OpenAI, env, task_id: str) -> Dict[str, Any]:
             })
             continue
 
-        result = env.step(action)
-        observation = result
-        steps_used = step
-        history.append(action.action_type)
+        try:
+            result = env.step(action)
+            observation = result
+            steps_used = step
+            history.append(action.action_type)
+        except Exception as exc:
+            print(f"[STEP] step={step} status=env_error error={exc}")
+            final_score = 0.001
+            break
 
         reward = result.reward or 0.0
         print(
@@ -244,7 +257,7 @@ def run_task(client: OpenAI, env, task_id: str) -> Dict[str, Any]:
             f"done={result.done}"
         )
 
-        final_score = observation.current_score
+        final_score = clamp_score(observation.current_score)
 
         # Add to conversation
         messages.append({"role": "assistant", "content": response_text})
@@ -265,9 +278,13 @@ def run_task(client: OpenAI, env, task_id: str) -> Dict[str, Any]:
             decision_amount=0,
             decision_reasoning="Max steps reached, defaulting to deny",
         )
-        result = env.step(fallback_action)
-        final_score = result.current_score
-        steps_used += 1
+        try:
+            result = env.step(fallback_action)
+            final_score = clamp_score(result.current_score)
+            steps_used += 1
+        except Exception as exc:
+            print(f"[STEP] step={steps_used + 1} status=fallback_env_error error={exc}")
+            final_score = 0.001
 
     score_breakdown = result.score_breakdown or {}
     print(
@@ -277,7 +294,7 @@ def run_task(client: OpenAI, env, task_id: str) -> Dict[str, Any]:
 
     return {
         "task_id": task_id,
-        "score": final_score,
+        "score": clamp_score(final_score),
         "steps_used": steps_used,
         "score_breakdown": score_breakdown,
     }
@@ -311,7 +328,7 @@ def main() -> None:
     total_score = 0.0
     for r in results:
         total_score += r["score"]
-    avg_score = total_score / len(results) if results else 0
+    avg_score = clamp_score(total_score / len(results)) if results else 0.001
     print(f"[END] average_score={avg_score:.3f} total_time={elapsed:.1f}s tasks={len(results)}")
 
     # Save results
