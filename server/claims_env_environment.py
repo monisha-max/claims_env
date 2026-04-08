@@ -491,7 +491,7 @@ class ClaimsEnvironment(Environment):
             supporting_evidence=None,
             action_result=result,
             action_success=success,
-            score_breakdown=dict(self._scores),
+            score_breakdown={k: self._clamp_score(v) for k, v in self._scores.items()},
             current_score=total_score,
             steps_taken=self._state.step_count,
             max_steps=self._max_steps,
