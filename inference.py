@@ -104,6 +104,12 @@ def clamp_score(value: float) -> float:
     return min(0.999, max(0.001, float(value)))
 
 
+def safe_error(exc: Exception, limit: int = 180) -> str:
+    """Render an exception as a single-line, parser-safe token."""
+    _ = limit  # kept for backward-compatible signature
+    return exc.__class__.__name__
+
+
 def build_user_prompt(
     step: int,
     observation: Any,
@@ -210,7 +216,7 @@ def run_task(client: OpenAI, env, task_id: str) -> Dict[str, Any]:
             )
             response_text = completion.choices[0].message.content or ""
         except Exception as exc:
-            print(f"[STEP] step={step} status=model_error error={exc}")
+            print(f"[STEP] step={step} status=model_error error={safe_error(exc)}")
             # Fallback: issue a deny decision
             response_text = json.dumps({
                 "action_type": "issue_decision",
@@ -232,7 +238,7 @@ def run_task(client: OpenAI, env, task_id: str) -> Dict[str, Any]:
         try:
             action = action_from_dict(action_dict)
         except Exception as exc:
-            print(f"[STEP] step={step} status=invalid_action error={exc}")
+            print(f"[STEP] step={step} status=invalid_action error={safe_error(exc)}")
             messages.append({"role": "assistant", "content": response_text})
             messages.append({
                 "role": "user",
@@ -246,7 +252,7 @@ def run_task(client: OpenAI, env, task_id: str) -> Dict[str, Any]:
             steps_used = step
             history.append(action.action_type)
         except Exception as exc:
-            print(f"[STEP] step={step} status=env_error error={exc}")
+            print(f"[STEP] step={step} status=env_error error={safe_error(exc)}")
             final_score = 0.001
             break
 
@@ -283,7 +289,7 @@ def run_task(client: OpenAI, env, task_id: str) -> Dict[str, Any]:
             final_score = clamp_score(result.current_score)
             steps_used += 1
         except Exception as exc:
-            print(f"[STEP] step={steps_used + 1} status=fallback_env_error error={exc}")
+            print(f"[STEP] step={steps_used + 1} status=fallback_env_error error={safe_error(exc)}")
             final_score = 0.001
 
     score_breakdown = result.score_breakdown or {}
@@ -319,7 +325,16 @@ def main() -> None:
     start_time = time.time()
 
     for task_id in TASK_IDS:
-        task_result = run_task(llm_client, env, task_id)
+        try:
+            task_result = run_task(llm_client, env, task_id)
+        except Exception as exc:
+            print(f"[END] task_id={task_id} score=0.001 steps=0 status=task_error error={safe_error(exc)}")
+            task_result = {
+                "task_id": task_id,
+                "score": 0.001,
+                "steps_used": 0,
+                "score_breakdown": {},
+            }
         results.append(task_result)
 
     elapsed = time.time() - start_time
@@ -345,7 +360,6 @@ def main() -> None:
     output_path = "outputs/inference_results.json"
     with open(output_path, "w") as f:
         json.dump(output, f, indent=2)
-    print(f"\n  Results saved to {output_path}")
 
 
 if __name__ == "__main__":
