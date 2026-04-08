@@ -31,7 +31,10 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 
 from openai import OpenAI
 
-from claims_env import ClaimsAction, ClaimsEnv
+try:
+    from claims_env.models import ClaimsAction
+except ImportError:
+    from models import ClaimsAction
 
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
@@ -288,7 +291,10 @@ def main() -> None:
     llm_client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
     # Use the environment directly (no server needed for inference)
-    from claims_env.server.claims_env_environment import ClaimsEnvironment
+    try:
+        from claims_env.server.claims_env_environment import ClaimsEnvironment
+    except ImportError:
+        from server.claims_env_environment import ClaimsEnvironment
 
     env = ClaimsEnvironment()
 

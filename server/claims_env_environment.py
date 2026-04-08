@@ -24,6 +24,11 @@ try:
 except ImportError:
     from server.tasks.task_definitions import TASKS, get_task
 
+try:
+    from .generator.scenario_generator import ScenarioGenerator
+except ImportError:
+    from server.generator.scenario_generator import ScenarioGenerator
+
 
 class ClaimsEnvironment(Environment):
     """
@@ -55,13 +60,32 @@ class ClaimsEnvironment(Environment):
         self,
         task_id: Optional[str] = None,
         episode_id: Optional[str] = None,
+        difficulty: Optional[str] = None,
+        insurance_type: Optional[str] = None,
+        seed: Optional[int] = None,
         **kwargs,
     ) -> ClaimsObservation:
-        """Reset with a specific task or default to easy."""
-        if task_id is None:
-            task_id = "easy_auto_collision"
+        """Reset with a fixed task or generate a procedural scenario.
 
-        self._task = get_task(task_id)
+        Fixed tasks:   reset(task_id="easy_auto_collision")
+        Procedural:    reset(difficulty="medium", insurance_type="auto", seed=42)
+        Random:        reset(difficulty="hard")  # random type and seed
+        Default:       reset()  # easy_auto_collision
+        """
+        if difficulty is not None or seed is not None:
+            # Procedural generation mode
+            gen = ScenarioGenerator(
+                seed=seed,
+                difficulty=difficulty or "medium",
+                insurance_type=insurance_type,
+            )
+            self._task = gen.generate()
+            task_id = self._task["task_id"]
+        elif task_id is None:
+            task_id = "easy_auto_collision"
+            self._task = get_task(task_id)
+        else:
+            self._task = get_task(task_id)
         self._ground_truth = self._task["ground_truth"]
         self._scores = {}
         self._actions_taken = []

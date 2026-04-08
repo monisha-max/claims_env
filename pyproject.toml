@@ -10,6 +10,7 @@ requires-python = ">=3.10"
 dependencies = [
     "openenv-core[core]>=0.2.2",
     "openai>=1.0.0",
+    "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -23,5 +24,5 @@ server = "claims_env.server.app:main"
 
 [tool.setuptools]
 include-package-data = true
-packages = ["claims_env", "claims_env.server", "claims_env.server.tasks"]
-package-dir = { "claims_env" = ".", "claims_env.server" = "server", "claims_env.server.tasks" = "server/tasks" }
+packages = ["claims_env", "claims_env.server", "claims_env.server.tasks", "claims_env.server.generator"]
+package-dir = { "claims_env" = ".", "claims_env.server" = "server", "claims_env.server.tasks" = "server/tasks", "claims_env.server.generator" = "server/generator" }
