@@ -302,7 +302,7 @@ def run_task(client: OpenAI, env, task_id: str) -> Dict[str, Any]:
         "task_id": task_id,
         "score": clamp_score(final_score),
         "steps_used": steps_used,
-        "score_breakdown": score_breakdown,
+        "score_breakdown": {k: clamp_score(v) for k, v in score_breakdown.items()},
     }
 
 
