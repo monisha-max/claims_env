@@ -482,8 +482,10 @@ class ClaimsEnvironment(Environment):
         self._state.current_score = total_score
 
         return ClaimsObservation(
-            task_id=self._task["task_id"] if self._task else None,
-            task_difficulty=self._task["difficulty"] if self._task else None,
+            task_id=self._task["task_id"] if self._task else (self._state.task_id or "uninitialized"),
+            task_difficulty=(
+                self._task["difficulty"] if self._task else (self._state.task_difficulty or "unknown")
+            ),
             policy_document=None,  # Only sent on reset to save bandwidth
             claim_submission=None,
             supporting_evidence=None,
