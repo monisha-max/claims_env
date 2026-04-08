@@ -117,11 +117,11 @@ class ClaimsEnvironment(Environment):
             action_result="Environment reset. Read the policy and claim, then begin adjudication.",
             action_success=True,
             score_breakdown={},
-            current_score=0.0,
+            current_score=0.001,
             steps_taken=0,
             max_steps=self._max_steps,
             done=False,
-            reward=0.0,
+            reward=0.001,
         )
 
     def step(self, action: ClaimsAction) -> ClaimsObservation:  # type: ignore[override]
@@ -430,8 +430,7 @@ class ClaimsEnvironment(Environment):
         score = weight * decision_score
         self._scores["decision"] = score
 
-        total_score = sum(self._scores.values())
-        total_score = min(0.999, max(0.001, total_score))
+        total_score = self._clamp_score(sum(self._scores.values()))
         self._state.current_score = total_score
 
         result_text = (
@@ -458,12 +457,17 @@ class ClaimsEnvironment(Environment):
 
     # --- Helpers ---
 
+    @staticmethod
+    def _clamp_score(value: float) -> float:
+        """Clamp to strictly between 0 and 1 (validator rejects exact 0.0 or 1.0)."""
+        return min(0.999, max(0.001, value))
+
     def _make_observation(
         self, result: str, success: bool, done: bool, reward: float
     ) -> ClaimsObservation:
         total_score = sum(self._scores.values())
-        # Clamp to strictly between 0 and 1 (validator rejects exact 0.0 or 1.0)
-        total_score = min(0.999, max(0.001, total_score))
+        total_score = self._clamp_score(total_score)
+        reward = self._clamp_score(reward)
         self._state.current_score = total_score
 
         return ClaimsObservation(

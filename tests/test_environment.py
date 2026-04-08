@@ -39,7 +39,7 @@ class TestReset:
 
         obs = env.reset(task_id="easy_auto_collision")
         assert env.state.step_count == 0
-        assert obs.current_score == 0.0
+        assert obs.current_score <= 0.01  # clamped above 0
         assert obs.done is False
 
     def test_reset_default_is_easy(self, env):
@@ -59,9 +59,9 @@ class TestReset:
         obs = env.reset(task_id="easy_auto_collision")
         assert obs.done is False
 
-    def test_reset_reward_is_zero(self, env):
+    def test_reset_reward_is_near_zero(self, env):
         obs = env.reset(task_id="easy_auto_collision")
-        assert obs.reward == 0.0
+        assert 0.0 < obs.reward <= 0.01  # clamped above 0
 
 
 class TestStep:
@@ -84,7 +84,7 @@ class TestStep:
             decision_amount=6400, decision_reasoning="test"))
         obs = easy_env.step(ClaimsAction(action_type="check_eligibility"))
         assert obs.done is True
-        assert obs.reward == -0.05
+        assert obs.reward <= 0.01  # penalty clamped above 0
 
     def test_step_policy_not_sent_after_reset(self, easy_env):
         obs = easy_env.step(ClaimsAction(action_type="check_eligibility"))
@@ -213,17 +213,17 @@ class TestFraudDetection:
             fraud_evidence="Only 18 days between inception and claim"))
         assert obs.reward > 0
 
-    def test_incorrect_fraud_flag_penalized(self, hard_env):
+    def test_incorrect_fraud_flag_low_reward(self, hard_env):
         obs = hard_env.step(ClaimsAction(
             action_type="flag_fraud", fraud_indicator="completely_made_up",
             fraud_evidence="No real evidence"))
-        assert obs.reward < 0
+        assert obs.reward <= 0.01  # penalty clamped above 0
 
     def test_empty_fraud_flag_rejected(self, hard_env):
         obs = hard_env.step(ClaimsAction(
             action_type="flag_fraud", fraud_indicator="", fraud_evidence=""))
         assert obs.action_success is False
-        assert obs.reward < 0
+        assert obs.reward <= 0.01  # penalty clamped above 0
 
     def test_duplicate_fraud_flag_no_double_reward(self, hard_env):
         obs1 = hard_env.step(ClaimsAction(
@@ -236,14 +236,14 @@ class TestFraudDetection:
             fraud_evidence="Policy too new again"))
         r2 = obs2.reward
 
-        assert r1 > 0
-        assert r2 <= 0  # no double reward
+        assert r1 > 0.01  # real reward
+        assert r2 <= 0.01  # no double reward (clamped)
 
     def test_false_fraud_on_clean_claim_penalized(self, easy_env):
         obs = easy_env.step(ClaimsAction(
             action_type="flag_fraud", fraud_indicator="timing",
             fraud_evidence="Suspicious"))
-        assert obs.reward < 0
+        assert obs.reward <= 0.01  # penalty clamped above 0
 
     def test_deny_fraud_claim_correct(self, hard_env):
         obs = hard_env.step(ClaimsAction(
@@ -266,8 +266,8 @@ class TestEdgeCases:
             action_type="request_info", info_question="What coverage?"))
         obs2 = easy_env.step(ClaimsAction(
             action_type="request_info", info_question="What deductible?"))
-        assert obs1.reward == 0.01
-        assert obs2.reward == 0.0
+        assert obs1.reward > 0.005  # first request gets real reward
+        assert obs2.reward <= 0.005  # second gets only clamp minimum
 
     def test_multiple_coverage_checks_diminishing(self, easy_env):
         obs1 = easy_env.step(ClaimsAction(action_type="check_coverage"))
