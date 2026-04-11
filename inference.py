@@ -8,6 +8,11 @@ MANDATORY:
     HF_TOKEN       Your Hugging Face / API key.
 - The inference script must be named `inference.py` and placed in the root.
 - Participants must use OpenAI Client for all LLM calls.
+
+STDOUT FORMAT:
+    [START] task=<task_name> env=<benchmark> model=<model_name>
+    [STEP]  step=<n> action=<action_str> reward=<0.00> done=<true|false> error=<msg|null>
+    [END]   success=<true|false> steps=<n> score=<score> rewards=<r1,r2,...,rn>
 """
 
 import json
@@ -33,6 +38,7 @@ except ImportError:
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+BENCHMARK = "claims_env"
 MAX_STEPS = 12
 TEMPERATURE = 0.1
 MAX_TOKENS = 1024
@@ -91,12 +97,7 @@ RESPOND WITH ONLY A SINGLE JSON ACTION. No explanation text.
 
 
 def safe_score(raw: Any) -> float:
-    """Map any raw score to the strict open interval (0.01, 0.99).
-
-    Uses the same linear mapping as proven validator-passing implementations:
-    output = raw * 0.98 + 0.01
-    This guarantees: 0.0 -> 0.01, 1.0 -> 0.99, and everything between maps linearly.
-    """
+    """Map any raw score to strict open interval (0.01, 0.99)."""
     try:
         v = float(raw)
     except (TypeError, ValueError):
@@ -104,8 +105,28 @@ def safe_score(raw: Any) -> float:
     if not math.isfinite(v):
         return 0.01
     v = max(0.0, min(1.0, v))
-    return v * 0.98 + 0.01
+    return round(v * 0.98 + 0.01, 4)
 
+
+# ─── Logging helpers (exact format required by validator) ────────────
+
+def log_start(task: str) -> None:
+    print(f"[START] task={task} env={BENCHMARK} model={MODEL_NAME}", flush=True)
+
+
+def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str] = None) -> None:
+    error_val = error if error else "null"
+    done_val = str(done).lower()
+    print(f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}", flush=True)
+
+
+def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    success_val = str(success).lower()
+    print(f"[END] success={success_val} steps={steps} score={score:.2f} rewards={rewards_str}", flush=True)
+
+
+# ─── Prompt / parse helpers ──────────────────────────────────────────
 
 def build_user_prompt(step, observation, history, is_reset=False):
     parts = [f"Step {step} of {MAX_STEPS}"]
@@ -155,28 +176,28 @@ def action_from_dict(d):
     return ClaimsAction(**filtered)
 
 
+# ─── Main task runner ────────────────────────────────────────────────
+
 def run_task(client, env, task_id):
-    print(f"[START] task={task_id}", flush=True)
+    log_start(task=task_id)
 
     result = env.reset(task_id=task_id)
     observation = result
     history = []
-
-    print(f"[START] difficulty={observation.task_difficulty} max_steps={observation.max_steps}", flush=True)
+    rewards = []
+    steps_used = 0
+    score = 0.01
 
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": build_user_prompt(1, observation, history, is_reset=True)},
     ]
 
-    final_score = 0.01
-    steps_used = 0
-
     for step in range(1, MAX_STEPS + 1):
         if result.done:
-            print(f"[STEP] step={step - 1} status=done_early", flush=True)
             break
 
+        # Get LLM response
         try:
             completion = client.chat.completions.create(
                 model=MODEL_NAME,
@@ -194,62 +215,74 @@ def run_task(client, env, task_id):
                 "decision_reasoning": "Unable to complete analysis due to error",
             })
 
+        # Parse action
         action_dict = parse_action(response_text)
         if action_dict is None:
+            log_step(step=step, action="parse_error", reward=0.01, done=False, error="Failed to parse JSON")
+            rewards.append(0.01)
+            steps_used = step
             messages.append({"role": "assistant", "content": response_text})
             messages.append({"role": "user", "content": "Invalid response. Please respond with a single JSON action object."})
             continue
 
         try:
             action = action_from_dict(action_dict)
-        except Exception:
+        except Exception as exc:
+            log_step(step=step, action="invalid_action", reward=0.01, done=False, error=str(exc)[:100])
+            rewards.append(0.01)
+            steps_used = step
             messages.append({"role": "assistant", "content": response_text})
-            messages.append({"role": "user", "content": "Invalid action. Please try again with valid parameters."})
+            messages.append({"role": "user", "content": "Invalid action. Please try again."})
             continue
 
+        # Execute step
         try:
             result = env.step(action)
             observation = result
             steps_used = step
+
+            reward = safe_score(result.reward) if result.reward is not None else 0.01
+            done = bool(result.done)
+            rewards.append(reward)
             history.append(action.action_type)
-        except Exception:
-            final_score = 0.01
+            score = safe_score(observation.current_score)
+
+            log_step(step=step, action=action.action_type, reward=reward, done=done, error=None)
+
+            messages.append({"role": "assistant", "content": response_text})
+            messages.append({"role": "user", "content": build_user_prompt(step + 1, observation, history)})
+
+            if done:
+                break
+        except Exception as exc:
+            log_step(step=step, action=action.action_type, reward=0.01, done=True, error=str(exc)[:100])
+            rewards.append(0.01)
+            steps_used = step
             break
 
-        final_score = safe_score(observation.current_score)
-
-        messages.append({"role": "assistant", "content": response_text})
-        messages.append({"role": "user", "content": build_user_prompt(step + 1, observation, history)})
-
-        if result.done:
-            break
-
+    # Force decision if not done
     if not result.done:
-        fallback = ClaimsAction(
-            action_type="issue_decision",
-            decision="deny",
-            decision_amount=0,
-            decision_reasoning="Max steps reached, defaulting to deny",
-        )
+        steps_used += 1
         try:
+            fallback = ClaimsAction(
+                action_type="issue_decision", decision="deny",
+                decision_amount=0, decision_reasoning="Max steps reached",
+            )
             result = env.step(fallback)
-            final_score = safe_score(result.current_score)
-            steps_used += 1
+            reward = safe_score(result.reward) if result.reward is not None else 0.01
+            rewards.append(reward)
+            score = safe_score(result.current_score)
+            log_step(step=steps_used, action="issue_decision", reward=reward, done=True, error=None)
         except Exception:
-            final_score = 0.01
+            rewards.append(0.01)
 
-    print(f"[END] task={task_id} score={final_score:.2f} steps={steps_used}", flush=True)
+    success = score > 0.1
+    log_end(success=success, steps=steps_used, score=score, rewards=rewards)
 
-    return {
-        "task_id": task_id,
-        "score": final_score,
-        "steps_used": steps_used,
-    }
+    return {"task_id": task_id, "score": score, "steps_used": steps_used}
 
 
 def main():
-    print(f"[START] model={MODEL_NAME} api={API_BASE_URL} max_steps={MAX_STEPS}", flush=True)
-
     llm_client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
     try:
@@ -265,17 +298,17 @@ def main():
         try:
             task_result = run_task(llm_client, env, task_id)
         except Exception:
-            print(f"[END] task={task_id} score=0.01 steps=0", flush=True)
+            log_start(task=task_id)
+            log_end(success=False, steps=0, score=0.01, rewards=[0.01])
             task_result = {"task_id": task_id, "score": 0.01, "steps_used": 0}
         results.append(task_result)
 
     elapsed = time.time() - start_time
     avg_score = safe_score(sum(r["score"] for r in results) / len(results)) if results else 0.01
-    print(f"[END] average_score={avg_score:.2f} total_time={elapsed:.1f}s tasks={len(results)}", flush=True)
 
     os.makedirs("outputs", exist_ok=True)
     with open("outputs/inference_results.json", "w") as f:
-        json.dump({"model": MODEL_NAME, "results": results, "average_score": avg_score}, f, indent=2)
+        json.dump({"model": MODEL_NAME, "results": results, "average_score": avg_score, "time": elapsed}, f, indent=2)
 
 
 if __name__ == "__main__":
