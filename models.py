@@ -121,7 +121,7 @@ class ClaimsObservation(Observation):
         default=None, description="Current score breakdown by category"
     )
     current_score: float = Field(
-        default=0.0, description="Current cumulative score (0.0-1.0)"
+        default=0.01, description="Current cumulative score in range (0, 1)"
     )
 
     # Episode info
@@ -137,7 +137,7 @@ class ClaimsState(State):
     actions_taken: List[str] = Field(
         default_factory=list, description="History of action types taken"
     )
-    current_score: float = Field(default=0.0, description="Current score")
+    current_score: float = Field(default=0.01, description="Current score")
     eligibility_checked: bool = Field(default=False)
     coverage_checked: bool = Field(default=False)
     payout_calculated: bool = Field(default=False)

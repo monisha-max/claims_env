@@ -63,7 +63,7 @@ class TestClaimsObservation:
         o = ClaimsObservation()
         assert o.done is False
         assert o.reward is None
-        assert o.current_score == 0.0
+        assert o.current_score == 0.01
         assert o.steps_taken == 0
         assert o.action_success is True
 

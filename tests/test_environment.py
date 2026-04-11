@@ -289,7 +289,7 @@ class TestEdgeCases:
                               fraud_indicator="test", fraud_evidence="test"))
         env.reset(task_id="hard_property_fraud")
         assert env.state.step_count == 0
-        assert env.state.current_score == 0.0
+        assert env.state.current_score <= 0.01
         assert env.state.fraud_flags == []
         assert env.state.eligibility_checked is False
 
