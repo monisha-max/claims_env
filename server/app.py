@@ -8,7 +8,6 @@ Endpoints:
     - GET /schema: Get action/observation schemas
     - WS /ws: WebSocket endpoint for persistent sessions
     - GET /health: Health check
-    - GET /web: Interactive Gradio web UI
 
 Usage:
     uvicorn server.app:app --reload --host 0.0.0.0 --port 8000
@@ -29,25 +28,12 @@ except (ImportError, ModuleNotFoundError):
     from server.claims_env_environment import ClaimsEnvironment
 
 
-# Build Gradio UI if available
-def _build_gradio():
-    try:
-        from server.gradio_ui import build_gradio_app
-    except ImportError:
-        try:
-            from .gradio_ui import build_gradio_app
-        except ImportError:
-            return None
-    return build_gradio_app(ClaimsEnvironment)
-
-
 app = create_app(
     ClaimsEnvironment,
     ClaimsAction,
     ClaimsObservation,
     env_name="claims_env",
     max_concurrent_envs=100,
-    gradio_builder=_build_gradio,
 )
 
 
