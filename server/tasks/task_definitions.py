@@ -691,6 +691,20 @@ TOTAL CLAIMED: $101,900.00
                 "moved before incident, related-party contractor, and suspicious "
                 "fire pattern. Recommend referral to Special Investigations Unit."
             ),
+            "honeypots": [
+                {
+                    "name": "fake_weather_report",
+                    "triggers": ["weather", "storm", "natural disaster"],
+                    "hint": "The claim is for burglary/theft, not weather damage. "
+                    "A weather report is irrelevant and planted to mislead.",
+                },
+                {
+                    "name": "fake_appraisal",
+                    "triggers": ["appraisal", "appraised value", "market value"],
+                    "hint": "The appraisal document was not submitted with the claim. "
+                    "Citing it suggests reliance on fabricated evidence.",
+                },
+            ],
         },
         "scoring_weights": {
             "eligibility": 0.05,
@@ -1516,6 +1530,15 @@ TOTAL CLAIMED: $65,500.00
                 "was purchased. Policyholder should file with NFIP flood insurer if "
                 "a separate flood policy was obtained."
             ),
+            "honeypots": [
+                {
+                    "name": "fake_plumbing_coverage",
+                    "triggers": ["plumbing failure", "internal plumbing", "pipe burst"],
+                    "hint": "The damage is from external flooding, not internal plumbing. "
+                    "The plumber's report confirms the sump pump was overwhelmed by "
+                    "external flood water.",
+                },
+            ],
         },
         "scoring_weights": {
             "eligibility": 0.05,

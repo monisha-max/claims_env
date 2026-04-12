@@ -322,6 +322,49 @@ class TestEdgeCases:
         assert obs.current_score > 0.0
         assert obs.current_score < 1.0
 
+    def test_efficiency_bonus_awarded(self, env):
+        """Agent that finishes in few steps gets efficiency bonus."""
+        env.reset(task_id="easy_auto_collision")
+        env.step(ClaimsAction(action_type="check_eligibility"))
+        env.step(ClaimsAction(action_type="check_coverage"))
+        obs = env.step(ClaimsAction(
+            action_type="issue_decision", decision="approve",
+            decision_amount=6400, decision_reasoning="Quick and correct"))
+        assert "efficiency_bonus" in obs.score_breakdown
+
+    def test_order_bonus_for_correct_workflow(self, env):
+        """Agent that follows ideal order gets order bonus."""
+        env.reset(task_id="easy_auto_collision")
+        env.step(ClaimsAction(action_type="check_eligibility"))
+        env.step(ClaimsAction(action_type="check_coverage"))
+        env.step(ClaimsAction(action_type="check_exclusion"))
+        env.step(ClaimsAction(action_type="calculate_payout",
+                              claimed_amount=8500, deductible=500,
+                              coverage_limit=25000, coverage_rate=0.80))
+        obs = env.step(ClaimsAction(
+            action_type="issue_decision", decision="approve",
+            decision_amount=6400, decision_reasoning="Complete workflow"))
+        assert "order_bonus" in obs.score_breakdown
+
+    def test_honeypot_penalty_on_hard_task(self, env):
+        """Agent that flags honeypot evidence gets penalized."""
+        env.reset(task_id="hard_property_fraud")
+        obs = env.step(ClaimsAction(
+            action_type="flag_fraud",
+            fraud_indicator="weather damage",
+            fraud_evidence="Storm caused the damage"))
+        assert "HONEYPOT" in obs.action_result
+        assert obs.action_success is False
+
+    def test_no_honeypot_on_easy_task(self, env):
+        """Easy tasks have no honeypots."""
+        env.reset(task_id="easy_auto_collision")
+        obs = env.step(ClaimsAction(
+            action_type="flag_fraud",
+            fraud_indicator="weather",
+            fraud_evidence="Storm"))
+        assert "HONEYPOT" not in obs.action_result
+
     def test_decision_amount_zero_on_denial(self, hard_env):
         obs = hard_env.step(ClaimsAction(
             action_type="issue_decision", decision="deny",

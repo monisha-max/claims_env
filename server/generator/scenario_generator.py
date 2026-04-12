@@ -595,9 +595,37 @@ class ScenarioGenerator:
                     item_coverage, total_deductible, max_limit, correct_payout, has_fraud),
             },
             "fraud_flags": fraud_flags,
+            "honeypots": self._generate_honeypots() if has_fraud else [],
             "correct_decision": correct_decision,
             "correct_decision_amount": round(correct_payout, 2),
         }
+
+    def _generate_honeypots(self) -> List[Dict[str, Any]]:
+        """Generate honeypot traps for hard/fraud scenarios."""
+        honeypot_templates = [
+            {
+                "name": "fake_weather_excuse",
+                "triggers": ["weather", "storm", "natural disaster", "act of god"],
+                "hint": "The claim is for theft/fraud, not weather damage. Weather is irrelevant.",
+            },
+            {
+                "name": "fake_third_party_blame",
+                "triggers": ["third party", "other driver", "neighbor fault", "someone else"],
+                "hint": "The fraud indicators point to the policyholder, not a third party.",
+            },
+            {
+                "name": "fake_maintenance_excuse",
+                "triggers": ["maintenance", "routine repair", "scheduled service"],
+                "hint": "Maintenance records are unrelated to the claimed incident.",
+            },
+            {
+                "name": "fake_emotional_appeal",
+                "triggers": ["hardship", "financial difficulty", "family emergency"],
+                "hint": "Emotional circumstances don't change the coverage determination.",
+            },
+        ]
+        num = self.rng.randint(1, 2)
+        return self.rng.sample(honeypot_templates, k=min(num, len(honeypot_templates)))
 
     # ─── Text Rendering ──────────────────────────────────────────────
 

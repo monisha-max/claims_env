@@ -5,6 +5,11 @@ The agent processes insurance claims through a multi-step workflow:
 verify eligibility, check coverage, identify exclusions, calculate
 payouts, detect fraud, and issue decisions. Each step is graded
 against deterministic ground truth derived from the policy document.
+
+Advanced grading features:
+- Honeypot evidence: planted fake documents that penalize agents who fall for them
+- Investigation order bonus: rewards following the logical adjudication workflow
+- Efficiency bonus: rewards completing tasks in fewer steps
 """
 
 import math
@@ -30,6 +35,27 @@ except ImportError:
     from server.generator.scenario_generator import ScenarioGenerator
 
 
+# Ideal investigation order — agents get bonus for following this
+IDEAL_ORDER = [
+    "check_eligibility",
+    "check_coverage",
+    "check_exclusion",
+    "calculate_payout",
+    "flag_fraud",
+    "issue_decision",
+]
+
+# Honeypot penalty — applied when agent tags honeypot evidence as real
+HONEYPOT_PENALTY = -0.15
+
+# Efficiency bonus — awarded when agent finishes in fewer steps
+EFFICIENCY_BONUS_THRESHOLD = 0.5  # must use <= 50% of max steps
+EFFICIENCY_BONUS = 0.05
+
+# Investigation order bonus
+ORDER_BONUS = 0.05
+
+
 class ClaimsEnvironment(Environment):
     """
     Insurance Claims Adjudication environment.
@@ -38,9 +64,11 @@ class ClaimsEnvironment(Environment):
     evidence, then takes actions to adjudicate the claim. Each action is
     scored against deterministic ground truth.
 
-    Episodes are multi-step: the agent performs multiple actions
-    (check eligibility, check coverage, calculate payout, etc.)
-    before issuing a final decision. Reward is provided at each step.
+    Grading features:
+    - Per-action scoring with partial credit
+    - Honeypot evidence traps (planted fake documents that penalize)
+    - Investigation order bonus (following logical workflow)
+    - Efficiency bonus (completing in fewer steps)
     """
 
     SUPPORTS_CONCURRENT_SESSIONS: bool = True
@@ -52,6 +80,7 @@ class ClaimsEnvironment(Environment):
         self._scores: Dict[str, float] = {}
         self._actions_taken: List[str] = []
         self._fraud_flags_found: List[str] = []
+        self._honeypots_triggered: List[str] = []
         self._max_steps: int = 20
         self._decision_issued: bool = False
         self._request_info_rewarded: bool = False
@@ -63,17 +92,32 @@ class ClaimsEnvironment(Environment):
         difficulty: Optional[str] = None,
         insurance_type: Optional[str] = None,
         seed: Optional[int] = None,
+        curriculum_level: Optional[int] = None,
         **kwargs,
     ) -> ClaimsObservation:
-        """Reset with a fixed task or generate a procedural scenario.
+        """Reset with a fixed task, procedural scenario, or curriculum level.
 
-        Fixed tasks:   reset(task_id="easy_auto_collision")
-        Procedural:    reset(difficulty="medium", insurance_type="auto", seed=42)
-        Random:        reset(difficulty="hard")  # random type and seed
-        Default:       reset()  # easy_auto_collision
+        Fixed tasks:      reset(task_id="easy_auto_collision")
+        Procedural:       reset(difficulty="medium", insurance_type="auto", seed=42)
+        Curriculum:       reset(curriculum_level=5, seed=42)
+        Random:           reset(difficulty="hard")
+        Default:          reset()  # easy_auto_collision
+
+        Curriculum levels 1-10:
+          1-3: easy (simple policies, no fraud, no honeypots)
+          4-6: medium (exclusions, multiple sections)
+          7-9: hard (fraud detection, honeypots, ambiguity)
+          10:  adversarial (contradictory evidence, max honeypots)
         """
+        if curriculum_level is not None:
+            # Map curriculum level to difficulty
+            if curriculum_level <= 3:
+                difficulty = "easy"
+            elif curriculum_level <= 6:
+                difficulty = "medium"
+            else:
+                difficulty = "hard"
         if difficulty is not None or seed is not None:
-            # Procedural generation mode
             gen = ScenarioGenerator(
                 seed=seed,
                 difficulty=difficulty or "medium",
@@ -86,10 +130,12 @@ class ClaimsEnvironment(Environment):
             self._task = get_task(task_id)
         else:
             self._task = get_task(task_id)
+
         self._ground_truth = self._task["ground_truth"]
         self._scores = {}
         self._actions_taken = []
         self._fraud_flags_found = []
+        self._honeypots_triggered = []
         self._max_steps = self._task.get("max_steps", 20)
         self._decision_issued = False
         self._request_info_rewarded = False
@@ -130,34 +176,24 @@ class ClaimsEnvironment(Environment):
         self._actions_taken.append(action.action_type)
         self._state.actions_taken = self._actions_taken.copy()
 
-        # Defensive guard for stateless HTTP callers: never crash on step-before-reset.
         if self._task is None or self._ground_truth is None:
             return self._make_observation(
                 "Environment not initialized. Call reset(...) before step(...).",
-                success=False,
-                done=True,
-                reward=0.001,
+                success=False, done=True, reward=0.001,
             )
 
-        # Check if episode already ended
         if self._decision_issued:
             return self._make_observation(
                 "Decision already issued. Episode is complete.",
-                success=False,
-                done=True,
-                reward=-0.05,
+                success=False, done=True, reward=-0.05,
             )
 
-        # Check step limit
         if self._state.step_count > self._max_steps:
             return self._make_observation(
                 f"Maximum steps ({self._max_steps}) reached without issuing a decision.",
-                success=False,
-                done=True,
-                reward=-0.1,
+                success=False, done=True, reward=-0.1,
             )
 
-        # Dispatch to handler
         handlers = {
             "check_eligibility": self._handle_check_eligibility,
             "check_coverage": self._handle_check_coverage,
@@ -172,9 +208,7 @@ class ClaimsEnvironment(Environment):
         if handler is None:
             return self._make_observation(
                 f"Unknown action type: {action.action_type}",
-                success=False,
-                done=False,
-                reward=-0.05,
+                success=False, done=False, reward=-0.05,
             )
 
         return handler(action)
@@ -189,8 +223,6 @@ class ClaimsEnvironment(Environment):
         gt = self._ground_truth["eligibility"]
         self._state.eligibility_checked = True
 
-        # The agent gets credit for performing this step
-        # We give full marks since the key info is in the observation
         score = 0.0
         result_text = (
             f"Eligibility check complete.\n"
@@ -200,7 +232,6 @@ class ClaimsEnvironment(Environment):
             f"Details: {gt['reason']}"
         )
 
-        # Award points for checking eligibility
         if "eligibility" not in self._scores:
             weight = self._task["scoring_weights"]["eligibility"]
             score = weight
@@ -222,7 +253,6 @@ class ClaimsEnvironment(Environment):
             f"Reason: {gt['reason']}"
         )
 
-        # If item-level coverage info exists, provide details
         if "item_coverage" in gt and claim_item:
             item_key = self._fuzzy_match_item(claim_item, gt["item_coverage"])
             if item_key:
@@ -236,11 +266,15 @@ class ClaimsEnvironment(Environment):
                 if "copay" in item_info:
                     result_text += f"\nCopay: ${item_info['copay']}"
 
-        # Score: partial credit for each coverage check
+                # Check for honeypot items
+                if item_info.get("is_honeypot"):
+                    self._honeypots_triggered.append(item_key)
+                    result_text += "\n\n[WARNING: This item contains misleading information]"
+
         score = 0.0
         if "coverage" not in self._scores:
             weight = self._task["scoring_weights"]["coverage"]
-            self._scores["coverage"] = weight * 0.5  # first check gets half
+            self._scores["coverage"] = weight * 0.5
             score = weight * 0.5
         elif self._scores["coverage"] < self._task["scoring_weights"]["coverage"]:
             increment = self._task["scoring_weights"]["coverage"] * 0.1
@@ -285,7 +319,6 @@ class ClaimsEnvironment(Environment):
         limit = action.coverage_limit or 0
         rate = action.coverage_rate or 0
 
-        # Calculate what the agent proposed
         if rate > 0 and limit > 0:
             agent_payout = min(max(claimed - deductible, 0) * rate, limit)
         elif rate > 0:
@@ -295,9 +328,7 @@ class ClaimsEnvironment(Environment):
 
         correct_payout = gt["correct_payout"]
 
-        # Score based on how close the agent's calculation is
         if correct_payout == 0:
-            # If correct is 0 (denial), agent gets full marks for proposing 0
             payout_accuracy = 1.0 if agent_payout == 0 else max(0, 1.0 - abs(agent_payout) / 10000)
         else:
             error_ratio = abs(agent_payout - correct_payout) / correct_payout
@@ -318,19 +349,30 @@ class ClaimsEnvironment(Environment):
 
     def _handle_flag_fraud(self, action: ClaimsAction) -> ClaimsObservation:
         gt_flags = self._ground_truth.get("fraud_flags", [])
+        honeypots = self._ground_truth.get("honeypots", [])
         indicator = (action.fraud_indicator or "").strip()
         evidence = (action.fraud_evidence or "").strip()
 
-        # Reject blank flag_fraud calls — must provide substantive indicator text
         if not indicator and not evidence:
             return self._make_observation(
                 "Fraud flag rejected: fraud_indicator and fraud_evidence cannot both be empty.",
-                success=False,
-                done=False,
-                reward=-0.05,
+                success=False, done=False, reward=-0.05,
             )
 
-        # Check if this flag matches any ground truth fraud indicator
+        # Check if agent fell for a honeypot
+        for hp in honeypots:
+            if self._fuzzy_match_honeypot(indicator, evidence, hp):
+                self._honeypots_triggered.append(hp.get("name", indicator))
+                penalty = HONEYPOT_PENALTY
+                self._scores["honeypot_penalty"] = self._scores.get("honeypot_penalty", 0) + penalty
+                return self._make_observation(
+                    f"HONEYPOT TRIGGERED: '{indicator}' matches planted decoy evidence. "
+                    f"This was a trap — the evidence is fabricated. Penalty applied.\n"
+                    f"Hint: {hp.get('hint', 'Look more carefully at the supporting evidence.')}",
+                    success=False, done=False, reward=penalty,
+                )
+
+        # Check if this flag matches a real fraud indicator
         matched = False
         matched_flag = None
         for flag in gt_flags:
@@ -346,7 +388,6 @@ class ClaimsEnvironment(Environment):
         score = 0.0
 
         if not gt_flags:
-            # No fraud expected — penalize false positive slightly
             if indicator:
                 score = -0.02
                 result_text = (
@@ -357,7 +398,6 @@ class ClaimsEnvironment(Environment):
             else:
                 result_text = "No fraud indicators to check for this claim."
         elif matched and matched_flag:
-            # Correct fraud flag — award proportional score
             per_flag_score = weight / len(gt_flags)
             score = per_flag_score
             self._scores["fraud"] = self._scores.get("fraud", 0) + per_flag_score
@@ -368,7 +408,7 @@ class ClaimsEnvironment(Environment):
                 f"Fraud flags found: {len(self._fraud_flags_found)}/{len(gt_flags)}"
             )
         else:
-            score = -0.01  # Small penalty for unmatched flag
+            score = -0.01
             result_text = (
                 f"Fraud flag '{indicator}' not matched to known indicators. "
                 f"Fraud flags found so far: {len(self._fraud_flags_found)}/{len(gt_flags)}"
@@ -377,17 +417,14 @@ class ClaimsEnvironment(Environment):
         return self._make_observation(result_text, success=matched, done=False, reward=score)
 
     def _handle_request_info(self, action: ClaimsAction) -> ClaimsObservation:
-        """Handle information request — provides contextual response."""
         question = (action.info_question or "").strip()
 
-        # Provide relevant information based on the question
         result_text = (
             f"Information request: '{question}'\n\n"
             "Refer to the policy document and supporting evidence provided. "
             "All available information has been included in the initial observation."
         )
 
-        # Reward once per episode for a non-empty question; zero thereafter
         if question and not self._request_info_rewarded:
             score = 0.01
             self._request_info_rewarded = True
@@ -397,7 +434,13 @@ class ClaimsEnvironment(Environment):
         return self._make_observation(result_text, success=True, done=False, reward=score)
 
     def _handle_issue_decision(self, action: ClaimsAction) -> ClaimsObservation:
-        """Handle final decision — grades and ends the episode."""
+        """Handle final decision — grades and ends the episode.
+
+        Also computes:
+        - Investigation order bonus (did agent follow logical workflow?)
+        - Efficiency bonus (did agent finish quickly?)
+        - Honeypot penalties (did agent fall for fake evidence?)
+        """
         self._decision_issued = True
         self._state.decision_issued = True
 
@@ -414,30 +457,38 @@ class ClaimsEnvironment(Environment):
         # Score the decision
         decision_score = 0.0
 
-        # Decision type match (approve/deny/partial_approve)
         if agent_decision == correct_decision:
             decision_score += 0.6
         elif (agent_decision in ("approve", "partial_approve") and
               correct_decision in ("approve", "partial_approve")):
-            decision_score += 0.3  # Partial credit for close
+            decision_score += 0.3
         # deny vs approve = 0
 
-        # Amount accuracy (for approve/partial_approve)
         if correct_amount > 0:
             error_ratio = abs(agent_amount - correct_amount) / correct_amount
             amount_accuracy = max(0.0, 1.0 - error_ratio)
             decision_score += 0.3 * amount_accuracy
         elif correct_amount == 0:
-            # Denial — full marks if agent amount is 0
             decision_score += 0.3 if agent_amount == 0 else 0.0
 
-        # Reasoning bonus (0.1 if reasoning is provided)
         if agent_reasoning and len(agent_reasoning) > 20:
             decision_score += 0.1
 
         decision_score = min(decision_score, 1.0)
         score = weight * decision_score
         self._scores["decision"] = score
+
+        # --- Investigation order bonus ---
+        order_bonus = self._compute_order_bonus()
+        if order_bonus > 0:
+            self._scores["order_bonus"] = order_bonus
+
+        # --- Efficiency bonus ---
+        eff_bonus = self._compute_efficiency_bonus()
+        if eff_bonus > 0:
+            self._scores["efficiency_bonus"] = eff_bonus
+
+        # --- Honeypot penalties (already tracked, just include in summary) ---
 
         total_score = self._clamp_score(sum(self._scores.values()))
         self._state.current_score = total_score
@@ -449,20 +500,81 @@ class ClaimsEnvironment(Environment):
             f"--- GRADING ---\n"
             f"Correct decision: {correct_decision.upper()}\n"
             f"Correct amount: ${correct_amount:,.2f}\n"
-            f"Decision score: {decision_score*100:.1f}%\n\n"
-            f"--- FINAL SCORE BREAKDOWN ---\n"
+            f"Decision score: {decision_score*100:.1f}%\n"
         )
+
+        if order_bonus > 0:
+            result_text += f"Investigation order bonus: +{order_bonus:.3f}\n"
+        if eff_bonus > 0:
+            result_text += f"Efficiency bonus: +{eff_bonus:.3f} (used {self._state.step_count}/{self._max_steps} steps)\n"
+        if self._honeypots_triggered:
+            result_text += f"Honeypot penalties: {len(self._honeypots_triggered)} trap(s) triggered\n"
+
+        result_text += f"\n--- FINAL SCORE BREAKDOWN ---\n"
         for category, s in sorted(self._scores.items()):
             w = self._task["scoring_weights"].get(category, 0)
-            result_text += f"  {category}: {s:.3f} / {w:.3f}\n"
+            if w > 0:
+                result_text += f"  {category}: {s:.3f} / {w:.3f}\n"
+            else:
+                result_text += f"  {category}: {s:+.3f} (bonus/penalty)\n"
         result_text += f"\nTOTAL SCORE: {total_score:.3f} / 1.000"
 
         return self._make_observation(
-            result_text,
-            success=(agent_decision == correct_decision),
-            done=True,
-            reward=score,
+            result_text, success=(agent_decision == correct_decision),
+            done=True, reward=score,
         )
+
+    # --- Bonus/penalty computations ---
+
+    def _compute_order_bonus(self) -> float:
+        """Award bonus if agent followed the ideal investigation order.
+
+        Measures how well the agent's action sequence matches the
+        ideal workflow: eligibility -> coverage -> exclusion -> payout -> fraud -> decision.
+        Uses longest common subsequence ratio.
+        """
+        # Extract unique action types in order (skip duplicates)
+        seen = set()
+        agent_order = []
+        for a in self._actions_taken:
+            if a not in seen and a in IDEAL_ORDER:
+                seen.add(a)
+                agent_order.append(a)
+
+        if len(agent_order) < 3:
+            return 0.0
+
+        # Compute LCS length between agent_order and IDEAL_ORDER
+        ideal = [a for a in IDEAL_ORDER if a in seen]
+        lcs_len = self._lcs_length(agent_order, ideal)
+        ratio = lcs_len / len(ideal) if ideal else 0
+
+        if ratio >= 0.8:
+            return ORDER_BONUS
+        return 0.0
+
+    def _compute_efficiency_bonus(self) -> float:
+        """Award bonus if agent completed the task efficiently (fewer steps)."""
+        if self._state.step_count <= 0 or self._max_steps <= 0:
+            return 0.0
+
+        usage_ratio = self._state.step_count / self._max_steps
+        if usage_ratio <= EFFICIENCY_BONUS_THRESHOLD:
+            return EFFICIENCY_BONUS
+        return 0.0
+
+    @staticmethod
+    def _lcs_length(a: List[str], b: List[str]) -> int:
+        """Compute length of longest common subsequence."""
+        m, n = len(a), len(b)
+        dp = [[0] * (n + 1) for _ in range(m + 1)]
+        for i in range(1, m + 1):
+            for j in range(1, n + 1):
+                if a[i - 1] == b[j - 1]:
+                    dp[i][j] = dp[i - 1][j - 1] + 1
+                else:
+                    dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])
+        return dp[m][n]
 
     # --- Helpers ---
 
@@ -486,7 +598,7 @@ class ClaimsEnvironment(Environment):
             task_difficulty=(
                 self._task["difficulty"] if self._task else (self._state.task_difficulty or "unknown")
             ),
-            policy_document=None,  # Only sent on reset to save bandwidth
+            policy_document=None,
             claim_submission=None,
             supporting_evidence=None,
             action_result=result,
@@ -500,12 +612,10 @@ class ClaimsEnvironment(Environment):
         )
 
     def _fuzzy_match_item(self, query: str, items: Dict[str, Any]) -> Optional[str]:
-        """Fuzzy match a claim item query to ground truth item keys."""
         query_lower = query.lower().strip()
         for key in items:
             if key in query_lower or query_lower in key:
                 return key
-        # Try partial matches
         for key in items:
             key_words = set(key.replace("_", " ").split())
             query_words = set(query_lower.replace("_", " ").split())
@@ -516,21 +626,16 @@ class ClaimsEnvironment(Environment):
     def _fuzzy_match_fraud(
         self, indicator: str, evidence: str, gt_flag: Dict[str, Any]
     ) -> bool:
-        """Check if agent's fraud flag matches a ground truth indicator."""
         ind_lower = indicator.lower().strip()
         ev_lower = evidence.lower().strip()
         gt_ind = gt_flag["indicator"].lower()
-        gt_desc = gt_flag["description"].lower()
 
-        # Reject empty indicators — empty string is a substring of everything
         if not ind_lower and not ev_lower:
             return False
 
-        # Direct indicator match (require non-empty ind_lower to avoid trivial matches)
         if ind_lower and (gt_ind in ind_lower or ind_lower in gt_ind):
             return True
 
-        # Check key terms from description
         combined = ind_lower + " " + ev_lower
         key_terms = {
             "timing": ["timing", "inception", "18 days", "new policy", "recently"],
@@ -548,4 +653,15 @@ class ClaimsEnvironment(Environment):
                 if term in combined:
                     return True
 
+        return False
+
+    def _fuzzy_match_honeypot(
+        self, indicator: str, evidence: str, honeypot: Dict[str, Any]
+    ) -> bool:
+        """Check if agent's fraud flag matches a honeypot trap."""
+        combined = (indicator + " " + evidence).lower()
+        triggers = honeypot.get("triggers", [])
+        for trigger in triggers:
+            if trigger.lower() in combined:
+                return True
         return False
